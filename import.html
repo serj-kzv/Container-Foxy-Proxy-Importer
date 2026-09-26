@@ -8,41 +8,68 @@
     <link rel="stylesheet" href="import.css" />
   </head>
   <body>
-    <!-- Sticky action bar: the three main actions (import + two
-         exports) are pinned to the top in a single row and stay
-         visible while the page scrolls. position: sticky has been
-         supported by Firefox since version 32 (all element types
-         since 59), so this is fully compatible with the target
-         browsers. -->
-    <div id="action-bar">
-      <button id="select-file" type="button"></button>
-      <button id="export-modern" type="button"></button>
-      <button id="export-legacy" type="button"></button>
-      <!-- Hidden file picker: safe inside a tab (bug 1658694 only
-           destroyed popups); triggered by the import button. -->
-      <input id="file-input" type="file" accept=".json,application/json,.xml,application/xml,text/xml" hidden />
+    <!-- Fixed control bar. Stays on top while the page scrolls: the
+         two global switches (DNS through proxy, proxy for all tracked
+         containers) are always reachable, plus the main actions. The
+         bar contents are centered with a fixed max width, exactly
+         like the page below. -->
+    <div id="top-bar">
+      <div class="bar-inner">
+        <div id="top-switches">
+          <label class="switch">
+            <input id="dns-always" type="checkbox" />
+            <span id="dns-always-label"></span>
+          </label>
+          <label class="switch">
+            <input id="enable-all" type="checkbox" />
+            <span id="enable-all-label"></span>
+          </label>
+        </div>
+        <div id="top-actions">
+          <button id="select-file" type="button"></button>
+          <button id="export-modern" type="button"></button>
+          <button id="export-legacy" type="button"></button>
+          <button id="add-container" type="button"></button>
+          <button id="remove-active" type="button"></button>
+          <button id="remove-all" type="button"></button>
+          <!-- Hidden file picker: safe inside a tab (bug 1658694 only
+               destroyed popups); triggered by the import button. -->
+          <input id="file-input" type="file" accept=".json,application/json,.xml,application/xml,text/xml" hidden />
+        </div>
+      </div>
     </div>
 
-    <h1 id="title"></h1>
-    <p id="hint"></p>
+    <!-- Centered page content: a fixed max width keeps the layout
+         together on wide windows instead of letting it stretch. -->
+    <main id="page">
+      <h1 id="title"></h1>
+      <p id="hint"></p>
 
-    <!-- Persistent warning banner: shown when another extension or
-         manual browser settings control the proxy configuration. -->
-    <div id="conflict-warning" hidden></div>
+      <!-- Persistent warning banner: shown when another extension or
+           manual browser settings control the proxy configuration. -->
+      <div id="conflict-warning" hidden></div>
 
-    <!-- Drag a file here to import it. The main import button lives in
-         the sticky action bar above. -->
-    <div id="drop-zone">
-      <span id="drop-hint"></span>
-    </div>
+      <!-- Drag a file here to import it. The main import button lives in
+           the fixed control bar above. -->
+      <div id="drop-zone">
+        <span id="drop-hint"></span>
+      </div>
 
-    <div id="status" class="status"></div>
-    <ul id="results" class="results"></ul>
+      <div id="status" class="status"></div>
+      <ul id="results" class="results"></ul>
 
-    <!-- Export section: the buttons are in the sticky action bar;
-         this block explains the two export formats. -->
-    <h2 id="export-title"></h2>
-    <p id="export-hint"></p>
+      <!-- Export section: the buttons are in the fixed control bar;
+           this block explains the two export formats. -->
+      <h2 id="export-title"></h2>
+      <p id="export-hint"></p>
+
+      <!-- Container management: EVERY Firefox container, tracked
+           (controlled by this extension) and untracked. Rendered by
+           import.js from the "list-containers" background answer. -->
+      <h2 id="containers-title"></h2>
+      <p id="containers-hint"></p>
+      <ul id="containers" class="containers"></ul>
+    </main>
 
     <script src="import.js"></script>
   </body>

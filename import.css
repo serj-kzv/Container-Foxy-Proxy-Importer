@@ -1,244 +1,646 @@
-/*
- * Import/export page styles with theme support.
- *
- * Two adaptation levels:
- *  1. Base: CSS custom properties + the prefers-color-scheme media
- *     query (system light/dark preference).
- *  2. Firefox theme: import.js reads browser.theme.getCurrent() and
- *     overrides the same custom properties with the colors of the
- *     theme installed in Firefox (frame, toolbar, toolbar_text…),
- *     reacting to browser.theme.onUpdated in real time.
- */
+/* Container Foxy Proxy Importer — page styles.
+ * Monochrome design: white, black and shades of gray ONLY. No rounded
+ * corners (border-radius: 0 everywhere — except the explicitly
+ * requested round protocol selectors), no shadows, thin solid
+ * borders, generous spacing — a calm, readable, human-friendly layout.
+ * The page content and the fixed control bar are CENTERED with a fixed
+ * max width, so the layout never stretches apart on wide windows.
+ * The space below the fixed bar is computed from the MEASURED bar
+ * height (the --top-bar-height custom property, set by import.js), so
+ * the bar can never overlap the page content at any window width.
+ * The palette adapts to the light/dark system preference (and to the
+ * installed Firefox theme via the JS theme bridge in import.js —
+ * which only ever sets GRAY tones, keeping the design monochrome in
+ * every theme). */
 
 :root {
   color-scheme: light dark;
 
-  /* Base palette: light theme by default. */
-  --page-background: #f7f6fb;
-  --page-foreground: #241b4d;
-  --muted-foreground: #5b5480;
-  --accent: #2b6cb0;
+  /* Light palette (default). */
+  --page-background: #ffffff;
+  --page-foreground: #000000;
+  --muted-foreground: #555555;
+  --faint-foreground: #777777;
+  --surface: #f2f2f2;
+  --surface-strong: #e6e6e6;
+  --border: #000000;
+  --border-soft: #999999;
+  --separator: #d4d4d4;
+  --accent: #000000;
   --accent-contrast: #ffffff;
-  --secondary-border: rgba(36, 27, 77, 0.35);
-  --zone-background: rgba(43, 108, 176, 0.06);
-  --zone-border: #2b6cb0;
-  --zone-active: rgba(43, 108, 176, 0.16);
-  --separator: rgba(36, 27, 77, 0.12);
-  --status-progress: #8a6d00;
-  --status-error: #c0392b;
-  --status-ok: #1e7e34;
+  --invalid: #000000;
+  --status-ok: #333333;
+  --status-error: #000000;
+  --status-progress: #555555;
+
+  /* Height of the fixed control bar, measured by import.js
+   * (syncTopBarHeight) — with a sane fallback before the script runs. */
+  --top-bar-height: 96px;
 }
 
-/* Base dark palette: used when the OS prefers dark mode and no
- * Firefox theme colors override it. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --page-background: #1b1533;
-    --page-foreground: #f2f0fa;
-    --muted-foreground: #b7aee0;
-    --accent: #5ad1ff;
-    --accent-contrast: #1b1533;
-    --secondary-border: rgba(242, 240, 250, 0.4);
-    --zone-background: rgba(90, 209, 255, 0.04);
-    --zone-border: #5ad1ff;
-    --zone-active: rgba(90, 209, 255, 0.12);
-    --separator: rgba(255, 255, 255, 0.08);
-    --status-progress: #ffd15c;
-    --status-error: #ff7b72;
-    --status-ok: #7ee787;
+    --page-background: #1a1a1a;
+    --page-foreground: #f2f2f2;
+    --muted-foreground: #b4b4b4;
+    --faint-foreground: #8f8f8f;
+    --surface: #242424;
+    --surface-strong: #333333;
+    --border: #f2f2f2;
+    --border-soft: #6e6e6e;
+    --separator: #3d3d3d;
+    --accent: #f2f2f2;
+    --accent-contrast: #000000;
+    --invalid: #f2f2f2;
+    --status-ok: #d4d4d4;
+    --status-error: #f2f2f2;
+    --status-progress: #b4b4b4;
   }
+}
+
+* {
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
+  background: var(--page-background);
+  color: var(--page-foreground);
+  font: 14px/1.5 sans-serif;
 }
 
+/* Space for the fixed control bar: the exact bar height is MEASURED
+ * by import.js and published as --top-bar-height, so the bar never
+ * overlaps the page content — whatever the wrap of the switches and
+ * buttons at the current window width. */
 body {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 0 16px 48px;
-  background: var(--page-background);
-  color: var(--page-foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 14px;
+  padding-top: calc(var(--top-bar-height) + 24px);
+  padding-bottom: 48px;
 }
 
-/* ------------------------------------------------------------------ */
-/* Sticky action bar: import + two exports, one row, always visible    */
-/* ------------------------------------------------------------------ */
+/* ---------- Fixed control bar (contents centered like the page) --- */
 
-#action-bar {
-  position: sticky;
+#top-bar {
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
-  display: flex;
-  gap: 8px;
-  /* Opaque page background + separator: scrolling content must not
-   * shine through the pinned bar. The negative side margins make the
-   * bar span the full width of the padded body column. */
-  margin: 0 -16px 16px;
-  padding: 12px 16px;
   background: var(--page-background);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
 }
 
-#action-bar button {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Shared centered inner container of the fixed bar and the page. */
+.bar-inner,
+#page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
-/* Import button is primary (accent fill); the two export buttons are
- * secondary (transparent with a border). */
-#action-bar #export-modern,
-#action-bar #export-legacy {
-  background: transparent;
-  color: var(--page-foreground);
-  border: 1px solid var(--secondary-border);
+#top-bar .bar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-#action-bar #export-modern:hover,
-#action-bar #export-legacy:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  filter: none;
+#top-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+#top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Typography ------------------------------------------ */
+
+h1,
+h2 {
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 24px 0 8px;
 }
 
 h1 {
-  font-size: 20px;
-  margin: 0 0 4px;
+  font-size: 22px;
+  margin-top: 32px;
 }
 
 h2 {
-  font-size: 16px;
-  margin: 24px 0 4px;
+  font-size: 17px;
+  border-bottom: 1px solid var(--separator);
+  padding-bottom: 4px;
 }
 
-#hint,
-#export-hint {
-  margin: 0 0 16px;
-  font-size: 13px;
+p {
+  margin: 0 0 12px;
   color: var(--muted-foreground);
 }
 
-#export-hint {
-  margin: 0 0 8px;
+/* ---------- Controls: buttons, inputs, checkboxes --------------- */
+
+button,
+input[type="text"],
+input[type="checkbox"] {
+  font: inherit;
+  color: inherit;
 }
 
-/* Conflict warning banner (shown when another extension or manual
- * browser settings control the proxy configuration). Plain border +
- * text color only — no color-mix() for maximum compatibility. */
-#conflict-warning {
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--status-error);
-  border-radius: 8px;
-  color: var(--status-error);
-  font-size: 13px;
-  white-space: pre-line;
-}
-
-/* Drag & drop zone: a secondary target for dropping config files.
- * The main import button lives in the sticky action bar above. */
-#drop-zone {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 72px;
-  margin-bottom: 12px;
-  padding: 16px;
-  border: 2px dashed var(--zone-border);
-  border-radius: 12px;
-  background: var(--zone-background);
-}
-
-#drop-zone.dragover {
-  background: var(--zone-active);
-}
-
-#drop-hint {
-  font-size: 13px;
-  color: var(--muted-foreground);
-  text-align: center;
-}
-
-/* Base button styles (used by the sticky action bar). */
 button {
-  padding: 12px 20px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 14px;
+  background: var(--page-background);
+  color: var(--page-foreground);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-button:hover {
-  filter: brightness(1.1);
+button:hover:not(:disabled) {
+  background: var(--surface-strong);
+}
+
+button:active:not(:disabled) {
+  background: var(--surface);
 }
 
 button:disabled {
-  opacity: 0.5;
-  cursor: wait;
+  color: var(--faint-foreground);
+  border-color: var(--border-soft);
+  cursor: not-allowed;
 }
+
+#top-bar button {
+  padding: 5px 10px;
+}
+
+/* Danger buttons (removal): outlined twice to stand out without color. */
+button.danger {
+  border-width: 2px;
+  font-weight: 700;
+}
+
+/* Square checkboxes for the switches and the "control proxy" flags. */
+input[type="checkbox"] {
+  appearance: none;
+  -moz-appearance: none;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  border: 1px solid var(--border);
+  background: var(--page-background);
+  cursor: pointer;
+  margin: 0 6px 0 0;
+  position: relative;
+  top: 2px;
+}
+
+input[type="checkbox"]:disabled {
+  border-color: var(--border-soft);
+  background: var(--surface);
+  cursor: not-allowed;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--accent-contrast);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:disabled:checked {
+  background: var(--border-soft);
+}
+
+label.switch {
+  display: inline-flex;
+  align-items: baseline;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Full color picker (input type=color): a square swatch with a thin
+   border, styled to stay monochrome until a color is picked. */
+input[type="color"] {
+  appearance: none;
+  -moz-appearance: none;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--page-background);
+  cursor: pointer;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 0 !important;
+}
+
+input[type="color"]::-moz-color-swatch-wrapper {
+  padding: 2px;
+}
+
+/* ---------- Status line and results ------------------------------ */
 
 .status {
-  min-height: 18px;
-  font-size: 13px;
+  margin: 8px 0;
+  min-height: 20px;
   color: var(--status-progress);
-  white-space: pre-line;
-}
-
-.status.error {
-  color: var(--status-error);
 }
 
 .status.ok {
   color: var(--status-ok);
 }
 
-.results {
+.status.error {
+  color: var(--status-error);
+  font-weight: 700;
+}
+
+#conflict-warning {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  padding: 8px 12px;
+  margin: 8px 0 16px;
+  font-weight: 700;
+}
+
+.results,
+.containers {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.results li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--separator);
-  font-size: 13px;
+.results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
 }
 
-.results li:last-child {
-  border-bottom: none;
+.results li {
+  display: flex;
+  gap: 8px;
+  border: 1px solid var(--separator);
+  padding: 8px 10px;
+  background: var(--surface);
 }
 
 .results .dot {
-  flex: none;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  min-width: 12px;
+  margin-top: 4px;
+  border: 1px solid var(--border-soft);
 }
 
 .results .meta {
-  flex: 1;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.results .meta .name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
+.results .name {
+  font-weight: 700;
 }
 
-.results .meta .proxy {
+.results .proxy {
   color: var(--muted-foreground);
+}
+
+/* ---------- Drop zone -------------------------------------------- */
+
+#drop-zone {
+  border: 1px dashed var(--border-soft);
+  padding: 18px 16px;
+  text-align: center;
+  color: var(--muted-foreground);
+  margin: 12px 0;
+}
+
+#drop-zone.dragover {
+  border-style: solid;
+  border-color: var(--border);
+  color: var(--page-foreground);
+  background: var(--surface);
+}
+
+/* ---------- Container list --------------------------------------- */
+
+.containers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.containers > li {
+  border: 1px solid var(--separator);
+  padding: 12px 14px;
+  background: var(--page-background);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Untracked containers: visually "inactive" — dimmed contents on a
+   flat gray surface, everything still readable but clearly locked. */
+.containers > li.untracked {
+  background: var(--surface);
+  color: var(--muted-foreground);
+}
+
+.containers > li.untracked .row-name input,
+.containers > li.untracked .style-row button {
+  color: var(--muted-foreground);
+}
+
+/* Header of a container row: the status label. */
+.status-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--separator);
+  padding-bottom: 4px;
+}
+
+.containers > li.tracked .status-label {
+  color: var(--page-foreground);
+}
+
+/* First line: name + control checkbox + delete button, in a row. */
+.row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.row-name .dot {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border: 1px solid var(--border);
+}
+
+/* The container icon: shown for EVERY container next to its color
+   dot — a small badge with the icon name (Firefox container icons
+   are named shapes: fingerprint, briefcase, dollar, …). */
+.icon-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--page-foreground);
+  background: var(--surface);
+  border: 1px solid var(--separator);
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.containers > li.untracked .icon-label {
+  color: var(--muted-foreground);
+}
+
+.row-name input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 120px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 2px 4px;
+  font-weight: 700;
+}
+
+.row-name input[type="text"]:focus {
+  outline: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Proxy area: protocol radios + the type:host:port input + DNS switch. */
+.row-proxy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.protocols {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border: 1px solid var(--separator);
+  padding: 4px 8px;
+}
+
+.protocols .protocol {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0 4px;
+  user-select: none;
+}
+
+/* Round protocol selectors (radio inputs) — the ONLY rounded elements,
+   explicitly requested; all other elements stay square. */
+.protocols input[type="radio"] {
+  appearance: none;
+  -moz-appearance: none;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  margin: 0 4px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 50% !important;
+  background: var(--page-background);
+  cursor: pointer;
+  position: relative;
+}
+
+.protocols input[type="radio"]:checked {
+  background: var(--accent);
+  border-color: var(--border);
+}
+
+.protocols input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50% !important;
+  background: var(--accent-contrast);
+}
+
+.proxy-input {
+  flex: 1 1 260px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proxy-input input[type="text"] {
+  background: var(--page-background);
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--page-foreground);
+}
+
+.proxy-input input[type="text"].invalid {
+  border: 2px solid var(--invalid);
+  background: var(--surface-strong);
+  font-weight: 700;
+}
+
+.proxy-input input[type="text"]:disabled {
+  cursor: not-allowed;
+  color: var(--faint-foreground);
+  background: var(--page-background);
+}
+
+.proxy-error {
+  color: var(--faint-foreground);
+  font-size: 12px;
+  display: block;
+  min-height: 15px;
+}
+
+.proxy-error.shown {
+  display: block;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+
+/* Per-container "DNS through proxy" switch: sits in the proxy row,
+   enabled only for the protocols that support it (socks4 / socks5). */
+.dns-switch {
+  display: inline-flex;
+  align-items: baseline;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.dns-switch input:disabled {
+  cursor: not-allowed;
+}
+
+/* Untracked containers: static note instead of the proxy editor. */
+.proxy-note {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* Style row: color picker, icon menu, auto buttons — one line. */
+.style-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--separator);
+  padding-top: 10px;
+}
+
+.style-row .spacer {
+  flex: 1 1 auto;
+}
+
+/* Color menu: a flat button that toggles a swatch list (no shadows,
+   no rounding — a plain bordered strip). */
+.color-menu,
+.icon-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.menu-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin: 4px 0 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: var(--page-background);
+  min-width: 120px;
+}
+
+.menu-list.open {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 260px;
+}
+
+.menu-list button.swatch {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+
+.menu-list button.swatch.current {
+  border: 2px solid var(--border);
+}
+
+.menu-list button.icon-option {
+  padding: 3px 8px;
+  min-width: 60px;
+  background: var(--page-background);
+  border: 1px solid var(--separator);
+}
+
+.menu-list button.icon-option.current {
+  border: 2px solid var(--border);
+  font-weight: 700;
+}
+
+/* Push the container row actions (delete) to the right. */
+.row-main .push-right {
+  margin-left: auto;
+}
+
+/* Responsive: keep the control bar readable on narrow windows. The
+   body padding-top follows --top-bar-height at EVERY width (the bar
+   wraps into more lines on narrow windows — the JS measurement
+   handles it), so no fixed-height guess is needed here. */
+@media (max-width: 720px) {
+  .bar-inner,
+  #page {
+    padding: 0 12px;
+  }
 }

@@ -9,8 +9,13 @@
  * is safe here: a tab is not destroyed when the native file dialog
  * opens (unlike a popup — Firefox bug 1658694).
  *
- * The page adapts to the light/dark system theme AND to the theme
- * installed in Firefox (browser.theme.getCurrent / theme.onUpdated).
+ * v2.0.0: the page also manages EVERY Firefox container — tracked
+ * (controlled by this extension) and untracked. Tracked containers
+ * have an editable "protocol:host:port" proxy field with round
+ * protocol selectors and live validation; every container can be
+ * renamed, restyled (color/icon, with auto generation), and removed.
+ * Everything saves seamlessly — no "save" buttons. The design is
+ * MONOCHROME (white/black/grays, no rounded corners, no shadows).
  */
 
 /* ------------------------------------------------------------------ */
@@ -20,7 +25,12 @@
 const message = (key) => browser.i18n.getMessage(key);
 
 /* ------------------------------------------------------------------ */
-/* Theme adaptation (system preference + installed Firefox theme)      */
+/* Theme adaptation (monochrome only)                                  */
+/*                                                                     */
+/* The installed Firefox theme is still honored (a v1.x feature), but  */
+/* the palette is derived ONLY from the theme luminance and contains  */
+/* nothing but white, black and shades of gray — the page stays       */
+/* monochrome in every theme, light or dark.                           */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -51,9 +61,9 @@ const pickThemeColor = (colors, keys, fallback) => {
 };
 
 /**
- * Apply the colors of the currently installed Firefox theme on top of
- * the CSS custom properties. Light/dark palettes are selected by the
- * luminance of the theme frame color.
+ * Apply the installed Firefox theme as a MONOCHROME palette: only the
+ * lightness of the theme frame decides between the light-gray and the
+ * dark-gray palette; no theme color is ever copied into the page.
  * @param {object|null} theme Firefox theme object from theme.getCurrent()
  * @returns {void}
  */
@@ -69,50 +79,24 @@ const applyFirefoxTheme = (theme) => {
   const frame = pickThemeColor(colors, ['frame', 'accentcolor', 'toolbar'], '#ffffff');
   const isDark = luminance(frame) < 0.5;
 
-  // Page surfaces.
-  root.setProperty('--page-background', pickThemeColor(
-    colors,
-    ['frame', 'accentcolor'],
-    isDark ? '#1b1533' : '#f7f6fb',
-  ));
-  root.setProperty('--page-foreground', pickThemeColor(
-    colors,
-    ['frame_text', 'tab_text', 'toolbar_text', 'bookmark_text'],
-    isDark ? '#f2f0fa' : '#241b4d',
-  ));
-  root.setProperty('--muted-foreground', pickThemeColor(
-    colors,
-    ['toolbar_field_text', 'tab_text', 'toolbar_text'],
-    isDark ? '#b7aee0' : '#5b5480',
-  ));
+  const gray = (darkValue, lightValue) => (isDark ? darkValue : lightValue);
 
-  // Accent color for the primary button.
-  root.setProperty('--accent', pickThemeColor(
-    colors,
-    ['button_primary', 'toolbar', 'popup_highlight'],
-    isDark ? '#5ad1ff' : '#2b6cb0',
-  ));
-  root.setProperty('--accent-contrast', pickThemeColor(
-    colors,
-    ['button_primary_hover' /* near enough as a contrast hint */, 'tab_background_text'],
-    isDark ? '#1b1533' : '#ffffff',
-  ));
-
-  // Drop zone.
-  const zoneBase = pickThemeColor(colors, ['toolbar_field', 'popup'], isDark ? 'rgba(90,209,255,0.04)' : 'rgba(43,108,176,0.06)');
-  root.setProperty('--zone-background', zoneBase);
-  root.setProperty('--zone-border', pickThemeColor(
-    colors,
-    ['toolbar_field_border', 'tab_line', 'toolbar_top_separator'],
-    isDark ? '#5ad1ff' : '#2b6cb0',
-  ));
-
-  // Separators and status colors follow the chosen palette.
-  root.setProperty('--secondary-border', isDark ? 'rgba(242,240,250,0.4)' : 'rgba(36,27,77,0.35)');
-  root.setProperty('--separator', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(36,27,77,0.12)');
-  root.setProperty('--status-progress', isDark ? '#ffd15c' : '#8a6d00');
-  root.setProperty('--status-error', isDark ? '#ff7b72' : '#c0392b');
-  root.setProperty('--status-ok', isDark ? '#7ee787' : '#1e7e34');
+  // Page surfaces: pure grayscale.
+  root.setProperty('--page-background', gray('#1a1a1a', '#ffffff'));
+  root.setProperty('--page-foreground', gray('#f2f2f2', '#000000'));
+  root.setProperty('--muted-foreground', gray('#b4b4b4', '#555555'));
+  root.setProperty('--faint-foreground', gray('#8f8f8f', '#777777'));
+  root.setProperty('--surface', gray('#242424', '#f2f2f2'));
+  root.setProperty('--surface-strong', gray('#333333', '#e6e6e6'));
+  root.setProperty('--border', gray('#f2f2f2', '#000000'));
+  root.setProperty('--border-soft', gray('#6e6e6e', '#999999'));
+  root.setProperty('--separator', gray('#3d3d3d', '#d4d4d4'));
+  root.setProperty('--accent', gray('#f2f2f2', '#000000'));
+  root.setProperty('--accent-contrast', gray('#000000', '#ffffff'));
+  root.setProperty('--invalid', gray('#f2f2f2', '#000000'));
+  root.setProperty('--status-ok', gray('#d4d4d4', '#333333'));
+  root.setProperty('--status-error', gray('#f2f2f2', '#000000'));
+  root.setProperty('--status-progress', gray('#b4b4b4', '#555555'));
 };
 
 /**
@@ -606,7 +590,7 @@ const buildModernExport = (entries) => {
  * renames and recolors made by the user or other extensions are
  * reflected in the exported FoxyProxy config. Then hand the JSON to
  * the BACKGROUND context, which performs downloads.download and owns
- * the blob-URL lifecycle — if this page is closed before the download
+ * the blob-URL lifecycle  if this page is closed before the download
  * finishes, the background's top-level downloads.onChanged listener
  * still revokes the URL correctly.
  * @param {'legacy'|'modern'} format export format
@@ -714,7 +698,7 @@ const renderResults = (results) => {
 
 /**
  * Handle the selected FoxyProxy file: parse it and run the import.
- * All failures are shown in the status line — nothing fails silently.
+ * All failures are shown in the status line  nothing fails silently.
  * @param {File} file
  */
 const handleFileSelected = async (file) => {
@@ -776,6 +760,741 @@ const handleFileSelected = async (file) => {
 };
 
 /* ------------------------------------------------------------------ */
+/* Container management state + helpers                                */
+/* ------------------------------------------------------------------ */
+
+// The full page state from the background: identities (EVERY Firefox
+// container, tracked and untracked), global settings and the supported
+// colors/icons of this browser.
+let pageState = { identities: [], settings: {}, supportedColors: [], supportedIcons: [] };
+
+// Proxy protocols shown as round selectors (FoxyProxy storage names;
+// the background maps socks5 -> "socks" for the ProxyInfo wire format).
+const PROTOCOLS = ['http', 'https', 'socks4', 'socks5'];
+
+// Host syntax accepted in the "protocol:host:port" input: DNS name,
+// IPv4 address or bracketed IPv6 literal (same rule as background.js).
+const HOST_PATTERN = /^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)$/;
+
+// Focused editing guard: while the user types inside the container
+// list, incoming "containers-changed" broadcasts (including the ones
+// caused by this page's own seamless saves) do NOT re-render the
+// list — otherwise the input would lose focus on every keystroke.
+const isEditingContainerList = () => {
+  const active = document.activeElement;
+  return Boolean(active && document.getElementById('containers').contains(active));
+};
+
+/**
+ * Parse the "protocol:host:port" input value.
+ * @param {string} text raw input value
+ * @returns {{ok: boolean, proxy: object|null}} parsed proxy or error
+ */
+const parseProxyString = (text) => {
+  const raw = String(text ?? '').trim();
+  if (raw === '') return { ok: true, proxy: null };
+  const match = raw.match(/^(http|https|socks4|socks5):([^:]+):([0-9]{1,5})$/i);
+  if (!match) return { ok: false, proxy: null };
+  const [, type, host, port] = match;
+  const portNumber = Number(port);
+  if (!HOST_PATTERN.test(host) || !Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+    return { ok: false, proxy: null };
+  }
+  return {
+    ok: true,
+    proxy: {
+      type: type.toLowerCase(),
+      host,
+      port: portNumber,
+      username: '',
+      password: '',
+      title: '',
+    },
+  };
+};
+
+/**
+ * Format a stored proxy as the "protocol:host:port" input value.
+ * @param {object|null} proxy stored proxy (or null)
+ * @returns {string} "http:1.2.3.4:8080" or "" when empty
+ */
+const formatProxyString = (proxy) => {
+  if (!proxy || !proxy.host || !proxy.port) return '';
+  return `${proxy.type}:${proxy.host}:${proxy.port}`;
+};
+
+/**
+ * Send a message to the background and show the error in the status
+ * line when the answer carries { error }.
+ * @param {object} payload message payload
+ * @returns {Promise<object|null>} answer or null on error
+ */
+const sendBackground = async (payload) => {
+  try {
+    const response = await browser.runtime.sendMessage(payload);
+    if (response && typeof response === 'object' && response.error) {
+      showStatus(message('statusError').replace('%s', response.error), 'error');
+      return null;
+    }
+    return response;
+  } catch (error) {
+    showStatus(message('statusError').replace('%s', error?.message ?? error), 'error');
+    return null;
+  }
+};
+
+/**
+ * Debounce helper for seamless (automatic) saves.
+ * @param {Function} fn async action
+ * @param {number} delay milliseconds
+ * @returns {Function} debounced function
+ */
+const debounce = (fn, delay = 500) => {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { fn(...args); }, delay);
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* Container list rendering                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Build the protocol selector group: round radio inputs for every
+ * protocol; picking one rewrites the protocol part of the proxy input.
+ * @param {object} identity container identity from the background
+ * @param {HTMLInputElement} proxyInput the "protocol:host:port" input
+ * @returns {HTMLDivElement} the .protocols element
+ */
+/**
+ * Weighted RGB distance between two hex colors (the same perceptual
+ * weighting the background uses for auto color).
+ * @param {string} hexA "#rrggbb"
+ * @param {string} hexB "#rrggbb"
+ * @returns {number}
+ */
+const hexDistance = (hexA, hexB) => {
+  const parse = (hex) => [0, 2, 4].map(
+    (offset) => parseInt(hex.replace('#', '').slice(offset, offset + 2), 16),
+  );
+  const [r1, g1, b1] = parse(hexA);
+  const [r2, g2, b2] = parse(hexB);
+  return Math.sqrt(
+    0.2126 * (r1 - r2) ** 2 + 0.7152 * (g1 - g2) ** 2 + 0.0722 * (b1 - b2) ** 2,
+  );
+};
+
+/**
+ * Map ANY hex color from the full color picker to the SUPPORTED
+ * Firefox container color closest to it (Firefox accepts only the
+ * colors returned by getSupportedColors — MDN
+ * contextualIdentities.getSupportedColors — so the freely picked
+ * color is applied as its nearest supported equivalent).
+ * @param {string} hex any "#rrggbb"
+ * @returns {{ color: string, colorCode: string }} nearest supported color
+ */
+const nearestSupportedColor = (hex) => {
+  let best = pageState.supportedColors[0];
+  let bestScore = Infinity;
+  for (const candidate of pageState.supportedColors) {
+    const score = hexDistance(hex, String(candidate.colorCode));
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+};
+
+/**
+ * Update the visible style (color dot, icon badge, picker value) of a
+ * rendered container row IN PLACE — immediately, so the user sees the
+ * applied color/icon the moment auto generation or picking completes.
+ * @param {HTMLElement} item the <li> of the container
+ * @param {string} colorCode hex color code
+ * @param {string} icon icon name
+ * @returns {void}
+ */
+const updateRowStyle = (item, colorCode, icon) => {
+  const dot = item.querySelector('.row-name .dot');
+  if (dot && colorCode) dot.style.background = colorCode;
+  const badge = item.querySelector('.row-name .icon-label');
+  if (badge && icon) badge.textContent = icon;
+  const picker = item.querySelector('.style-row input[type="color"]');
+  if (picker && colorCode) picker.value = colorCode;
+};
+
+/**
+ * Build the protocol selector group: round radio inputs for every
+ * protocol; picking one rewrites the protocol part of the proxy input
+ * and enables/disables the per-container DNS switch (proxyDNS is only
+ * usable with socks4/socks5 — MDN proxy.ProxyInfo).
+ * @param {object} identity container identity from the background
+ * @param {HTMLInputElement} proxyInput the "protocol:host:port" input
+ * @param {Function} onProtocolChange called with the new protocol
+ * @returns {HTMLDivElement} the .protocols element
+ */
+const buildProtocolSelector = (identity, proxyInput, onProtocolChange) => {
+  const group = document.createElement('div');
+  group.className = 'protocols';
+
+  const current = identity.proxy?.type ?? 'http';
+
+  /**
+   * Sync the round protocol radios with the protocol typed/pasted at
+   * the start of the "protocol:host:port" proxy field. The radios and
+   * the text field never disagree: typing "socks5:host:port" checks
+   * the socks5 radio automatically.
+   * @param {string} [protocol] protocol to select; empty clears all
+   */
+  const syncRadios = (protocol = '') => {
+    for (const radio of group.querySelectorAll('input[type="radio"]')) {
+      radio.checked = radio.value === protocol;
+    }
+  };
+
+  for (const protocol of PROTOCOLS) {
+    const label = document.createElement('label');
+    label.className = 'protocol';
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = `protocol-${identity.cookieStoreId}`;
+    radio.value = protocol;
+    radio.checked = protocol === current;
+    // Round checkbox (radio): switching the protocol rewrites the
+    // "protocol:host:port" string in place, keeping host:port intact,
+    // and re-evaluates the per-container DNS switch availability.
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const raw = proxyInput.value.trim();
+      const rest = raw.includes(':') ? raw.slice(raw.indexOf(':') + 1) : '';
+      proxyInput.value = `${protocol}:${rest}`;
+      proxyInput.dispatchEvent(new Event('input', { bubbles: true }));
+      onProtocolChange(protocol);
+    });
+
+    const text = document.createElement('span');
+    text.textContent = protocol;
+
+    label.append(radio, text);
+    group.appendChild(label);
+  }
+  group.syncRadios = syncRadios;
+  return group;
+};
+
+/**
+ * Build a dropdown menu (colors or icons) that opens below its button.
+ * @param {string} buttonText button caption
+ * @param {object[]} items menu items
+ * @param {string} items.key value sent to the background
+ * @param {string} [items.swatch] color code for a color swatch
+ * @param {string} items.label visible label
+ * @param {string} currentKey currently selected item
+ * @param {Function} onPick called with the picked key
+ * @returns {HTMLDivElement} the .color-menu/.icon-menu element
+ */
+const buildMenu = (buttonText, items, currentKey, onPick) => {
+  const wrapper = document.createElement('div');
+  wrapper.className = items[0]?.swatch ? 'color-menu' : 'icon-menu';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = buttonText;
+
+  const list = document.createElement('div');
+  list.className = 'menu-list';
+  for (const item of items) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    if (item.swatch) {
+      option.className = 'swatch';
+      option.style.background = item.swatch;
+      option.title = item.label;
+    } else {
+      option.className = 'icon-option';
+      option.textContent = item.label;
+    }
+    if (item.key === currentKey) option.classList.add('current');
+    option.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      list.classList.remove('open');
+      await onPick(item.key);
+    });
+    list.appendChild(option);
+  }
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    // Close every other open menu first.
+    document.querySelectorAll('.menu-list.open').forEach((open) => {
+      if (open !== list) open.classList.remove('open');
+    });
+    list.classList.toggle('open');
+  });
+
+  wrapper.append(button, list);
+  return wrapper;
+};
+
+// Close every open menu on any click outside of them.
+document.addEventListener('click', () => {
+  document.querySelectorAll('.menu-list.open').forEach((open) => open.classList.remove('open'));
+});
+
+/**
+ * Build ONE container row (an <li>) for the container list.
+ * Tracked containers get the full proxy editor (protocol selectors,
+ * "protocol:host:port" input, per-container DNS switch); untracked
+ * ones show the static "not controlled" note and a disabled control
+ * checkbox. Every row shows the container icon badge and the color
+ * dot, and has the full style controls: color picker (any hex color,
+ * applied as the nearest supported container color), icon menu, auto
+ * color and auto icon — both auto actions update the row IMMEDIATELY.
+ * @param {object} identity container identity from the background
+ * @returns {HTMLLIElement} the rendered row
+ */
+const buildContainerRow = (identity) => {
+  const item = document.createElement('li');
+  item.className = identity.tracked ? 'tracked' : 'untracked';
+
+  // --- status label (above the active/inactive elements) ---
+  const statusLabel = document.createElement('div');
+  statusLabel.className = 'status-label';
+  statusLabel.textContent = identity.tracked
+    ? message('trackedLabel')
+    : message('untrackedLabel');
+
+  // --- main row: name + control checkbox + delete ---
+  const rowMain = document.createElement('div');
+  rowMain.className = 'row-main';
+
+  const rowName = document.createElement('div');
+  rowName.className = 'row-name';
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = identity.colorCode || '#888888';
+
+  // The container icon, VISIBLE for every container: a small badge
+  // with the icon name (Firefox container icons are named shapes —
+  // fingerprint, briefcase, dollar, cart, circle, gift, vacation,
+  // food, fruit, pet, tree, chill).
+  const iconBadge = document.createElement('span');
+  iconBadge.className = 'icon-label';
+  iconBadge.textContent = identity.icon;
+  iconBadge.title = message('iconBadgeHint');
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = identity.name;
+  nameInput.title = message('renameHint');
+  // Seamless rename: saved automatically after typing pauses.
+  const saveName = debounce(async () => {
+    const clean = nameInput.value.trim();
+    if (!clean || clean === identity.name) return;
+    const answer = await sendBackground({
+      type: 'rename-container',
+      cookieStoreId: identity.cookieStoreId,
+      name: clean,
+    });
+    if (answer) identity.name = clean;
+  });
+  nameInput.addEventListener('input', saveName);
+
+  rowName.append(dot, iconBadge, nameInput);
+
+  const controlLabel = document.createElement('label');
+  controlLabel.className = 'switch';
+  const controlBox = document.createElement('input');
+  controlBox.type = 'checkbox';
+  // The per-container "Control proxy" checkbox and the GLOBAL master
+  // switch ("Use the assigned proxy for every tracked container")
+  // work together correctly:
+  //  - master ON -> the checkbox shows its OWN stored flag and is
+  //    FULLY FUNCTIONAL: toggle it independently per container;
+  //  - master OFF -> the routing is direct for every tracked
+  //    container anyway, so the checkbox is honestly shown unchecked
+  //    and locked (hint explains why). The stored flag is NOT
+  //    overwritten: it comes back the moment the master switch is
+  //    turned ON again (the switch listener re-renders the list).
+  const masterOn = pageState.settings?.enableAll === true;
+  if (identity.tracked) {
+    controlBox.checked = masterOn && identity.control;
+    controlBox.disabled = !masterOn;
+    controlLabel.title = !masterOn ? message('controlMasterOffHint') : '';
+  } else {
+    controlBox.checked = false;
+    controlBox.disabled = true;
+  }
+  controlBox.addEventListener('change', async () => {
+    const answer = await sendBackground({
+      type: 'set-control',
+      cookieStoreId: identity.cookieStoreId,
+      control: controlBox.checked,
+    });
+    if (answer) identity.control = controlBox.checked;
+  });
+  const controlText = document.createElement('span');
+  controlText.textContent = message('controlProxyLabel');
+  controlLabel.append(controlBox, controlText);
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'danger';
+  deleteButton.textContent = message('deleteContainerButton');
+  deleteButton.addEventListener('click', async () => {
+    const answer = await sendBackground({
+      type: 'remove-container',
+      cookieStoreId: identity.cookieStoreId,
+    });
+    if (answer) refreshContainers();
+  });
+
+  rowMain.append(rowName, controlLabel);
+  const pushRight = document.createElement('span');
+  pushRight.className = 'push-right';
+  rowMain.append(pushRight, deleteButton);
+
+  // --- proxy row ---
+  const rowProxy = document.createElement('div');
+  rowProxy.className = 'row-proxy';
+
+  // Per-container "DNS through proxy" switch: enabled only while the
+  // protocol supports it (socks4 / socks5 — MDN proxy.ProxyInfo).
+  const buildDnsSwitch = (protocol) => {
+    const globalDns = pageState.settings?.dnsAlways === true;
+    const protocolOk = protocol === 'socks4' || protocol === 'socks5';
+    const dnsLabel = document.createElement('label');
+    dnsLabel.className = 'dns-switch';
+    const dnsBox = document.createElement('input');
+    dnsBox.type = 'checkbox';
+    dnsBox.dataset.protocol = protocol;
+    // The GLOBAL DNS switch wins: when it is ON, every socks4/socks5
+    // container routes DNS through its proxy and its own checkbox is
+    // locked ON. When it is OFF, each container follows its own
+    // stored "Route DNS through the proxy" flag.
+    dnsBox.checked = protocolOk && (globalDns || Boolean(identity.proxy?.proxyDNS));
+    dnsBox.disabled = !protocolOk || globalDns;
+    dnsBox.addEventListener('change', async () => {
+      const answer = await sendBackground({
+        type: 'set-dns',
+        cookieStoreId: identity.cookieStoreId,
+        dnsThroughProxy: dnsBox.checked,
+      });
+      if (answer && identity.proxy) {
+        identity.proxy.proxyDNS = dnsBox.checked;
+      }
+    });
+    const dnsText = document.createElement('span');
+    dnsText.textContent = message('dnsThroughProxyLabel');
+    dnsLabel.append(dnsBox, dnsText);
+    dnsLabel.title = globalDns
+      ? message('dnsForcedHint')
+      : (!protocolOk ? message('dnsUnavailableHint') : '');
+    return dnsLabel;
+  };
+
+  if (identity.tracked) {
+    const proxyWrap = document.createElement('div');
+    proxyWrap.className = 'proxy-input';
+
+    const proxyInput = document.createElement('input');
+    proxyInput.type = 'text';
+    proxyInput.value = formatProxyString(identity.proxy);
+    proxyInput.placeholder = message('proxyPlaceholder');
+    proxyInput.spellcheck = false;
+
+    // The info line under the proxy field is ALWAYS present (fixed
+    // height, nothing on the page shifts): "No proxy set" for an
+    // empty field, "valid and applied" for a correct address, the
+    // invalid-field warning for a broken one.
+    const proxyError = document.createElement('span');
+    proxyError.className = 'proxy-error';
+    const updateProxyInfo = () => {
+      const value = proxyInput.value.trim();
+      const { ok } = parseProxyString(proxyInput.value);
+      if (!value) {
+        proxyError.textContent = message('proxyNotSet');
+        proxyError.classList.remove('shown');
+        proxyInput.classList.remove('invalid');
+      } else if (ok) {
+        proxyError.textContent = message('proxyAppliedOk');
+        proxyError.classList.remove('shown');
+        proxyInput.classList.remove('invalid');
+      } else {
+        proxyError.textContent = message('proxyInvalid');
+        proxyError.classList.add('shown');
+        proxyInput.classList.add('invalid');
+      }
+    };
+    updateProxyInfo();
+
+    // The per-container DNS switch lives in the proxy row and follows
+    // the selected protocol.
+    let dnsSwitch = buildDnsSwitch(identity.proxy?.type ?? '');
+    const onProtocolChange = (protocol) => {
+      const fresh = buildDnsSwitch(protocol);
+      dnsSwitch.replaceWith(fresh);
+      dnsSwitch = fresh;
+    };
+
+    /**
+     * Live validation + seamless save of the "protocol:host:port"
+     * input. Invalid input is highlighted and NOT used (the proxy is
+     * served direct) — the message under the field says exactly that.
+     * @param {boolean} [save=false] whether to send the value
+     */
+    const applyProxyInput = (save = false) => {
+      const { ok, proxy } = parseProxyString(proxyInput.value);
+      updateProxyInfo();
+      if (!save) return;
+      const { ok: valid, proxy: parsed } = parseProxyString(proxyInput.value);
+      if (!valid) return; // keep the last saved value; proxy = direct
+      sendBackground({
+        type: 'set-proxy',
+        cookieStoreId: identity.cookieStoreId,
+        proxy: parsed,
+      });
+    };
+    // Protocol selector is created BEFORE the input listener so its
+    // syncRadios helper can be called on every keystroke/paste.
+    const protocolSelector = buildProtocolSelector(identity, proxyInput, onProtocolChange);
+    proxyInput.addEventListener('input', () => {
+      // The protocol word typed/pasted at the start of the field
+      // (before the first ":") auto-checks the matching round radio —
+      // including PARTIAL input like "socks5:host" before the port.
+      const prefix = proxyInput.value.split(':')[0].trim().toLowerCase();
+      protocolSelector.syncRadios(PROTOCOLS.includes(prefix) ? prefix : '');
+    });
+    proxyInput.addEventListener('input', () => applyProxyInput(false));
+    const saveProxy = debounce(() => applyProxyInput(true), 600);
+    proxyInput.addEventListener('input', saveProxy);
+
+    proxyWrap.append(proxyInput, proxyError);
+    rowProxy.append(
+      protocolSelector,
+      proxyWrap,
+      dnsSwitch,
+    );
+  } else {
+    // Untracked container: a DISABLED proxy field that always says
+    // "Unknown" + the fixed info line "The proxy is not controlled by
+    // this extension". WebExtension APIs expose no way to READ the
+    // proxy another extension assigned to a container (proxy.onRequest
+    // only routes requests, there is no query API), so taking over a
+    // foreign container is not possible — it is shown for information.
+    const proxyWrap = document.createElement('div');
+    proxyWrap.className = 'proxy-input';
+
+    const proxyInput = document.createElement('input');
+    proxyInput.type = 'text';
+    proxyInput.value = message('proxyUnknown');
+    proxyInput.disabled = true;
+    proxyInput.spellcheck = false;
+
+    const proxyInfo = document.createElement('span');
+    proxyInfo.className = 'proxy-error';
+    proxyInfo.textContent = message('proxyNotControlled');
+
+    proxyWrap.append(proxyInput, proxyInfo);
+    rowProxy.appendChild(proxyWrap);
+  }
+
+  // --- style row: full color picker, icon menu, auto buttons ---
+  const styleRow = document.createElement('div');
+  styleRow.className = 'style-row';
+
+  // FULL color picker (input type="color"): any hex color. Firefox
+  // containers accept only the supported color set, so the picked
+  // color is applied as the nearest supported color — the dot and
+  // the picker update IMMEDIATELY after the choice.
+  const colorPicker = document.createElement('input');
+  colorPicker.type = 'color';
+  colorPicker.value = /^#[0-9a-fA-F]{6}$/.test(identity.colorCode ?? '')
+    ? identity.colorCode
+    : '#888888';
+  colorPicker.title = message('colorPickerHint');
+  // Debounced: the input event fires continuously while the user drags
+  // inside the native color picker - restyle once, after the pause.
+  const applyPickedColor = async () => {
+    const nearest = nearestSupportedColor(colorPicker.value);
+    const answer = await sendBackground({
+      type: 'restyle-container',
+      cookieStoreId: identity.cookieStoreId,
+      style: { color: nearest.color },
+    });
+    if (answer) {
+      updateRowStyle(item, nearest.colorCode, null);
+      identity.color = nearest.color;
+      identity.colorCode = nearest.colorCode;
+    }
+  };
+  colorPicker.addEventListener('input', debounce(applyPickedColor, 300));
+
+  // Compact menu of the supported colors as swatches.
+  const colorMenu = buildMenu(
+    message('chooseColor'),
+    pageState.supportedColors.map(({ color, colorCode }) => ({
+      key: color, swatch: colorCode, label: color,
+    })),
+    identity.color,
+    async (color) => {
+      const match = pageState.supportedColors.find(({ color: key }) => key === color);
+      const answer = await sendBackground({
+        type: 'restyle-container',
+        cookieStoreId: identity.cookieStoreId,
+        style: { color },
+      });
+      if (answer) {
+        updateRowStyle(item, match?.colorCode ?? '', null);
+        identity.color = color;
+        identity.colorCode = match?.colorCode ?? identity.colorCode;
+      }
+    },
+  );
+
+  const iconMenu = buildMenu(
+    message('chooseIcon'),
+    pageState.supportedIcons.map((icon) => ({ key: icon, label: icon })),
+    identity.icon,
+    async (icon) => {
+      const answer = await sendBackground({
+        type: 'restyle-container',
+        cookieStoreId: identity.cookieStoreId,
+        style: { icon },
+      });
+      if (answer) {
+        updateRowStyle(item, null, icon);
+        identity.icon = icon;
+      }
+    },
+  );
+
+  // Auto color: the background picks the supported color most
+  // distinct from all OTHER containers (and never the current one,
+  // so the change is always visible). The row updates IMMEDIATELY
+  // from the answer — the badge/dot/picker refresh in place.
+  const autoColorButton = document.createElement('button');
+  autoColorButton.type = 'button';
+  autoColorButton.textContent = message('autoColor');
+  autoColorButton.addEventListener('click', async () => {
+    const answer = await sendBackground({ type: 'auto-color', cookieStoreId: identity.cookieStoreId });
+    if (answer && !answer.error) {
+      updateRowStyle(item, answer.colorCode, null);
+      identity.color = answer.color;
+      identity.colorCode = answer.colorCode;
+    }
+  });
+
+  // Auto icon: same — an icon not used by any other container (never
+  // the current one), applied and shown IMMEDIATELY.
+  const autoIconButton = document.createElement('button');
+  autoIconButton.type = 'button';
+  autoIconButton.textContent = message('autoIcon');
+  autoIconButton.addEventListener('click', async () => {
+    const answer = await sendBackground({ type: 'auto-icon', cookieStoreId: identity.cookieStoreId });
+    if (answer && !answer.error) {
+      updateRowStyle(item, null, answer.icon);
+      identity.icon = answer.icon;
+    }
+  });
+
+  styleRow.append(colorPicker, colorMenu, iconMenu, autoColorButton, autoIconButton);
+
+  item.append(statusLabel, rowMain, rowProxy, styleRow);
+  return item;
+};
+
+const renderContainers = () => {
+  const list = document.getElementById('containers');
+  list.replaceChildren(...pageState.identities.map(buildContainerRow));
+};
+
+/**
+ * Reload the page state from the background and re-render the list +
+ * the global switches. Used on startup and after every structural
+ * change (import, add, remove, restyle, external changes).
+ * @returns {Promise<void>}
+ */
+const refreshContainers = async () => {
+  const response = await sendBackground({ type: 'list-containers' });
+  if (!response || !Array.isArray(response.identities)) return;
+  pageState = response;
+
+  document.getElementById('dns-always').checked = Boolean(response.settings?.dnsAlways);
+  document.getElementById('enable-all').checked = Boolean(response.settings?.enableAll);
+
+  renderContainers();
+};
+
+/* ------------------------------------------------------------------ */
+/* Global switches + container actions (fixed control bar)             */
+/* ------------------------------------------------------------------ */
+// GLOBAL "Always route DNS through the proxy" switch. proxyDNS applies
+// to SOCKS4/SOCKS5 only (MDN proxy.ProxyInfo). When checked, it
+// OVERRIDES the per-container DNS checkboxes (they re-render locked
+// ON); when unchecked, every container follows its own "Route DNS
+// through the proxy" checkbox. The full list is re-rendered so every
+// row reflects the new state IMMEDIATELY — safe here: the focus is on
+// the top-bar switch, never inside the container list.
+document.getElementById('dns-always').addEventListener('change', async (event) => {
+  const answer = await sendBackground({
+    type: 'set-settings',
+    settings: { dnsAlways: event.target.checked },
+  });
+  if (answer) {
+    pageState.settings.dnsAlways = event.target.checked;
+    refreshContainers();
+  }
+});
+
+// GLOBAL "Use the assigned proxy for every tracked container" switch —
+// the MASTER switch at the background routing level. It does NOT
+// lock the per-container checkboxes — each "Control proxy" checkbox
+// stays fully functional; unchecked, all tracked containers direct.
+document.getElementById('enable-all').addEventListener('change', async (event) => {
+  const answer = await sendBackground({
+    type: 'set-settings',
+    settings: { enableAll: event.target.checked },
+  });
+  if (answer) {
+    pageState.settings.enableAll = event.target.checked;
+    refreshContainers();
+  }
+});
+
+// Add a tracked container: empty proxy input, control checkbox off.
+document.getElementById('add-container').addEventListener('click', async () => {
+  const answer = await sendBackground({ type: 'add-container' });
+  if (answer) refreshContainers();
+});
+
+// Delete every TRACKED container — with a confirmation dialog.
+document.getElementById('remove-active').addEventListener('click', async () => {
+  if (!window.confirm(message('confirmRemoveActive'))) return;
+  const answer = await sendBackground({ type: 'remove-active-containers' });
+  if (answer) {
+    showStatus(message('statusRemoved').replace('%s', String(answer.removed ?? 0)), 'ok');
+    refreshContainers();
+  }
+});
+
+// Delete EVERY container (tracked and untracked) — with a confirmation
+// dialog. This is the only other action that asks for confirmation.
+document.getElementById('remove-all').addEventListener('click', async () => {
+  if (!window.confirm(message('confirmRemoveAll'))) return;
+  const answer = await sendBackground({ type: 'remove-all-containers' });
+  if (answer) {
+    showStatus(message('statusRemoved').replace('%s', String(answer.removed ?? 0)), 'ok');
+    refreshContainers();
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Startup                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -784,6 +1503,15 @@ document.getElementById('hint').textContent = message('importHint');
 document.getElementById('drop-hint').textContent = message('dropHint');
 document.getElementById('export-title').textContent = message('exportTitle');
 document.getElementById('export-hint').textContent = message('exportHint');
+document.getElementById('containers-title').textContent = message('containersTitle');
+document.getElementById('containers-hint').textContent = message('containersHint');
+document.getElementById('dns-always-label').textContent = message('dnsAlwaysLabel');
+document.getElementById('enable-all-label').textContent = message('enableAllLabel');
+
+// Explanatory tooltips on the two global switches (the wrapping
+// <label> elements carry the hint), so their effect is always clear.
+document.getElementById('dns-always')?.closest('label')?.setAttribute('title', message('dnsAlwaysHint'));
+document.getElementById('enable-all')?.closest('label')?.setAttribute('title', message('enableAllHint'));
 
 const fileInput = document.getElementById('file-input');
 const selectButton = document.getElementById('select-file');
@@ -794,14 +1522,19 @@ const exportLegacyButton = document.getElementById('export-legacy');
 selectButton.textContent = message('chooseFile');
 exportModernButton.textContent = message('exportModern');
 exportLegacyButton.textContent = message('exportLegacy');
+document.getElementById('add-container').textContent = message('addContainerButton');
+document.getElementById('remove-active').textContent = message('removeAllActiveButton');
+document.getElementById('remove-all').textContent = message('removeAllButton');
 showStatus(message('statusWaiting'));
 
 // Live progress from the background: "Creating container i of N: name".
 // Also handles two background notifications:
 //  - "proxy-conflict": another extension or manual browser settings
-//    control the proxy configuration → show/hide the warning banner;
+//    control the proxy configuration -> show/hide the warning banner;
 //  - "containers-changed": a container was created/renamed/recolored/
-//    removed (also by other extensions) → the export data is fresh.
+//    removed (also by other extensions) -> refresh the container list
+//    (skipped while the user is typing inside the list, so seamless
+//    editing never loses focus).
 browser.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'import-progress') {
     showStatus(message('statusCreating')
@@ -819,7 +1552,9 @@ browser.runtime.onMessage.addListener((msg) => {
     }
   }
   if (msg?.type === 'containers-changed') {
-    showStatus(message('statusContainersChanged'));
+    if (!isEditingContainerList()) {
+      refreshContainers();
+    }
   }
   return undefined;
 });
@@ -868,3 +1603,32 @@ dropZone.addEventListener('drop', async (event) => {
     await handleFileSelected(file);
   }
 });
+
+// Initial container list + global switches.
+refreshContainers();
+
+/* ------------------------------------------------------------------ */
+/* Fixed control bar height sync                                       */
+/* ------------------------------------------------------------------ */
+
+/* The fixed control bar grows when the long switch captions and the
+ * action buttons wrap into more lines (narrow windows, larger fonts).
+ * Its real height is measured here and published as the
+ * --top-bar-height custom property, which drives the body padding-top
+ * (see import.css) — so the fixed bar can never overlap the page
+ * content at any window width. A ResizeObserver keeps the value exact
+ * whenever the bar content re-wraps; the resize listener and the
+ * initial call cover observers that are unavailable. */
+const topBarElement = document.getElementById('top-bar');
+const syncTopBarHeight = () => {
+  if (!topBarElement) return;
+  document.documentElement.style.setProperty(
+    '--top-bar-height',
+    `${topBarElement.offsetHeight}px`,
+  );
+};
+window.addEventListener('resize', syncTopBarHeight);
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(syncTopBarHeight).observe(topBarElement);
+}
+syncTopBarHeight();

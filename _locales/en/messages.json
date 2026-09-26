@@ -100,5 +100,107 @@
   },
   "notifyBindingRemoved": {
     "message": "Container “%s” was removed — its proxy binding was deleted."
+  },
+  "dnsAlwaysLabel": {
+    "message": "Always route DNS of all proxies through the proxy for proxy protocols that support it (recommended)"
+  },
+  "enableAllLabel": {
+    "message": "Use the assigned proxy for every tracked container (uncheck — all tracked containers browse direct)"
+  },
+  "addContainerButton": {
+    "message": "Add a container controlled by Container Foxy Proxy Importer"
+  },
+  "removeAllActiveButton": {
+    "message": "Delete all active containers"
+  },
+  "removeAllButton": {
+    "message": "Delete all containers"
+  },
+  "deleteContainerButton": {
+    "message": "Delete container"
+  },
+  "controlProxyLabel": {
+    "message": "Control proxy"
+  },
+  "trackedLabel": {
+    "message": "Controlled by the Container Foxy Proxy Importer extension"
+  },
+  "untrackedLabel": {
+    "message": "Not controlled by the Container Foxy Proxy Importer extension"
+  },
+  "proxyNotControlled": {
+    "message": "The proxy is not controlled by the Container Foxy Proxy Importer extension"
+  },
+  "containersTitle": {
+    "message": "Containers"
+  },
+  "containersHint": {
+    "message": "Every Firefox container is listed. Containers imported or added here are controlled by this extension (their proxy can be edited). Other containers are shown for information only — their proxy is managed elsewhere. All changes save automatically."
+  },
+  "proxyPlaceholder": {
+    "message": "protocol:host:port"
+  },
+  "proxyInvalid": {
+    "message": "The field is invalid and will not be used (the proxy will be disabled)"
+  },
+  "chooseColor": {
+    "message": "Color"
+  },
+  "chooseIcon": {
+    "message": "Icon"
+  },
+  "autoColor": {
+    "message": "Auto color"
+  },
+  "autoIcon": {
+    "message": "Auto icon"
+  },
+  "renameHint": {
+    "message": "Click to rename the container — saved automatically"
+  },
+  "newContainerName": {
+    "message": "Container"
+  },
+  "confirmRemoveAll": {
+    "message": "Delete ALL Firefox containers, including the ones not controlled by this extension? This cannot be undone."
+  },
+  "confirmRemoveActive": {
+    "message": "Delete all containers controlled by this extension? This cannot be undone."
+  },
+  "statusRemoved": {
+    "message": "Deleted containers: %s"
+  },
+  "dnsThroughProxyLabel": {
+    "message": "Route DNS through the proxy"
+  },
+  "dnsUnavailableHint": {
+    "message": "DNS through the proxy is only supported for socks4/socks5"
+  },
+  "colorPickerHint": {
+    "message": "Any color — the closest supported container color is applied"
+  },
+  "iconBadgeHint": {
+    "message": "Container icon"
+  },
+  "dnsForcedHint": {
+    "message": "Locked on by the global “Always route DNS through the proxy” setting (applies to socks4/socks5)"
+  },
+  "dnsAlwaysHint": {
+    "message": "When checked, DNS is routed through the proxy for every tracked socks4/socks5 container, and the per-container checkboxes are locked on. When unchecked, each container follows its own “Route DNS through the proxy” checkbox"
+  },
+  "enableAllHint": {
+    "message": "Master switch. Unchecked — every tracked container browses direct, no proxy is used at all. Checked — each container follows its own “Control proxy” checkbox and its proxy field"
+  },
+  "proxyNotSet": {
+    "message": "No proxy set"
+  },
+  "proxyAppliedOk": {
+    "message": "The proxy address is valid and applied"
+  },
+  "proxyUnknown": {
+    "message": "Unknown"
+  },
+  "controlMasterOffHint": {
+    "message": "Locked off while the global master switch “Use the assigned proxy for every tracked container” is unchecked — every tracked container browses direct. The stored state of this checkbox is preserved and restored when the master switch is turned back on"
   }
 }

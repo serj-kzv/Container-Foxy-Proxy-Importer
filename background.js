@@ -7,13 +7,18 @@
  * cookieStoreId) + webRequest.onAuthRequired (automatic proxy
  * authentication). Plain JS (ES2022), async/await, Airbnb style.
  *
- * v1.5.0: tracks the LIVE container state (contextualIdentities
- * onCreated/onUpdated/onRemoved) — renames/recolors made by the user or
- * other extensions never break the binding (the key is the stable
- * cookieStoreId) and are reflected in the export data. Also watches
- * browser.proxy.settings (BrowserSetting.onChange + get) and warns the
- * user when another extension or manual browser settings take over the
- * proxy configuration.
+ * v2.0.0: full container management. The config now stores, per
+ * tracked container, a "control" flag ("Контролировать прокси"), and
+ * two GLOBAL settings are stored as well:
+ *  - dnsAlways: route DNS through the proxy for every proxy protocol
+ *    that supports it (proxyDNS is only usable with "socks" (SOCKS5)
+ *    and "socks4" — see MDN proxy.ProxyInfo and the Firefox source
+ *    ProxyChannelFilter validation);
+ *  - enableAll: master switch that turns the proxy on/off for ALL
+ *    tracked containers at once.
+ * The import/export page can now list every container (tracked and
+ * untracked), edit proxy strings, rename, restyle (color/icon), add
+ * and remove containers — everything through messages handled here.
  *
  * IMPORTANT (event page rules): all listeners are registered
  * SYNCHRONOUSLY at the top level of the script. Nothing is awaited
@@ -28,6 +33,13 @@
 // Storage key in browser.storage.local: cookieStoreId -> proxy.
 const CONFIG_KEY = 'containerProxyConfig';
 
+// Storage key in browser.storage.local: global settings.
+const SETTINGS_KEY = 'containerProxySettings';
+
+// Default global settings: DNS through the proxy where supported
+// (recommended) and the proxy enabled for all tracked containers.
+const DEFAULT_SETTINGS = { dnsAlways: true, enableAll: true };
+
 // Notification identifiers (reused so notifications replace each other).
 const NOTE_START = 'container-proxy-importer-start';
 const NOTE_DONE = 'container-proxy-importer-done';
@@ -39,6 +51,13 @@ const IMPORT_URL = browser.runtime.getURL('import.html');
 // Notification id for proxy-control conflicts (other extensions or
 // manually configured browser proxy settings).
 const NOTE_CONFLICT = 'container-proxy-importer-conflict';
+
+// Canonical proxy types accepted by the page/background (the FoxyProxy
+// storage names). ProxyInfo on-the-wire names differ for SOCKS5:
+// Firefox proxy.ProxyInfo accepts "http", "https", "socks", "socks4",
+// "direct" (MDN proxy.ProxyInfo), so "socks5" is mapped to "socks".
+const PROXY_TYPES = ['http', 'https', 'socks4', 'socks5'];
+const PROXY_INFO_TYPE = { http: 'http', https: 'https', socks4: 'socks4', socks5: 'socks' };
 
 /* ------------------------------------------------------------------ */
 /* Supported container colors and icons (Firefox 153+ APIs)            */
@@ -126,6 +145,77 @@ const pickContainerStyle = (seed, foxyHex) => {
   };
 };
 
+/**
+ * Perceptual color distance (weighted RGB euclidean distance — the
+ * classic approximation of human perception, the same weighting as in
+ * the W3C relative-luminance formula).
+ * @param {string} hexA "#rrggbb"
+ * @param {string} hexB "#rrggbb"
+ * @returns {number}
+ */
+const colorDistance = (hexA, hexB) => {
+  const parse = (hex) => [0, 2, 4].map((offset) => parseInt(hex.replace('#', '').slice(offset, offset + 2), 16));
+  const [r1, g1, b1] = parse(hexA);
+  const [r2, g2, b2] = parse(hexB);
+  return Math.sqrt(
+    0.2126 * (r1 - r2) ** 2 + 0.7152 * (g1 - g2) ** 2 + 0.0722 * (b1 - b2) ** 2,
+  );
+};
+
+/**
+ * Auto color: the supported color MOST DIFFERENT from the colors of all
+ * other containers (maximizes the minimal distance to the colors in
+ * use), so a human can always tell the containers apart. Ties are
+ * resolved by the API order (deterministic result).
+ * @param {string} [excludeStoreId] cookieStoreId to ignore (recoloring)
+ * @returns {{ color: string, colorCode: string }}
+ */
+const pickDistinctColor = (excludeStoreId) => {
+  // The color CURRENTLY used by this container is excluded, so
+  // auto color ALWAYS produces a visible change.
+  const currentColor = excludeStoreId ? containerMap.get(excludeStoreId)?.color : null;
+  const inUse = [...containerMap.entries()]
+    .filter(([id]) => id !== excludeStoreId)
+    .map(([, container]) => container.color)
+    .map((colorName) => supportedColors.find(({ color }) => color === colorName))
+    .filter(Boolean)
+    .map(({ colorCode }) => String(colorCode));
+  const candidates = supportedColors.filter(({ color }) => color !== currentColor);
+  const pool = candidates.length > 0 ? candidates : supportedColors;
+  let best = pool[0];
+  let bestScore = -1;
+  for (const candidate of pool) {
+    const score = inUse.length === 0
+      ? 1
+      : Math.min(...inUse.map((code) => colorDistance(String(candidate.colorCode), code)));
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+};
+
+/**
+ * Auto icon: an icon NOT used by any other container (the first unused
+ * one in API order), falling back to a deterministic pick.
+ * @param {string} [excludeStoreId] cookieStoreId to ignore
+ * @returns {string} one of the Firefox container icons
+ */
+const pickDistinctIcon = (excludeStoreId) => {
+  // The icon CURRENTLY used by this container is excluded, so
+  // auto icon ALWAYS produces a visible change.
+  const currentIcon = excludeStoreId ? containerMap.get(excludeStoreId)?.icon : null;
+  const inUse = new Set([...containerMap.entries()]
+    .filter(([id]) => id !== excludeStoreId)
+    .map(([, container]) => container.icon));
+  const unused = supportedIcons.find((icon) => !inUse.has(icon) && icon !== currentIcon);
+  if (unused) return unused;
+  const others = supportedIcons.filter((icon) => icon !== currentIcon);
+  const pool = others.length > 0 ? others : supportedIcons;
+  return pool[hashString(excludeStoreId ?? String(Date.now())) % pool.length];
+};
+
 /* ------------------------------------------------------------------ */
 /* Notifications: information messages about the import progress       */
 /* ------------------------------------------------------------------ */
@@ -195,7 +285,7 @@ const openImportPage = async () => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Container-to-proxy configuration storage                            */
+/* Configuration storage: proxies + global settings                   */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -216,15 +306,84 @@ const writeProxyConfig = async (config) => {
   await browser.storage.local.set({ [CONFIG_KEY]: config });
 };
 
+/**
+ * Read the global settings (dnsAlways, enableAll) from local storage.
+ * @returns {Promise<{dnsAlways: boolean, enableAll: boolean}>}
+ */
+const readSettings = async () => {
+  const { [SETTINGS_KEY]: settings } = await browser.storage.local.get(SETTINGS_KEY);
+  return { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
+};
+
+/**
+ * Write the global settings to local storage.
+ * @param {object} settings { dnsAlways?, enableAll? }
+ * @returns {Promise<void>}
+ */
+const writeSettings = async (settings) => {
+  await browser.storage.local.set({ [SETTINGS_KEY]: settings });
+};
+
+/* ------------------------------------------------------------------ */
+/* Proxy validation (shared with the page: the page validates the    */
+/* "type:host:port" string, the background re-validates every value)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Validate and normalize a proxy object coming from the page.
+ * The accepted host syntax: a DNS name (letters, digits, dots,
+ * hyphens), an IPv4 address, or a bracketed IPv6 literal.
+ * @param {object} proxy { type, host, port, ... }
+ * @returns {object} normalized proxy record
+ */
+const normalizeProxyInput = (proxy) => {
+  const entry = proxy ?? {};
+  const type = String(entry.type ?? '').trim().toLowerCase();
+  const host = String(entry.host ?? '').trim();
+  const port = Number(entry.port);
+
+  const typeOk = PROXY_TYPES.includes(type);
+  const hostOk = /^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)$/.test(host);
+  const portOk = Number.isInteger(port) && port > 0 && port <= 65535;
+
+  return {
+    skip: false,
+    type: typeOk ? type : '',
+    host: hostOk ? host : '',
+    port: portOk ? port : 0,
+    username: String(entry.username ?? ''),
+    password: String(entry.password ?? ''),
+    title: String(entry.title ?? ''),
+    cc: String(entry.cc ?? ''),
+    country: String(entry.country ?? ''),
+    city: String(entry.city ?? ''),
+    proxyDNS: Boolean(entry.proxyDNS),
+    color: String(entry.color ?? ''),
+    control: entry.control !== false,
+    invalid: !(typeOk && hostOk && portOk),
+  };
+};
+
+/**
+ * Whether a stored proxy entry actually routes traffic: a valid
+ * protocol, a valid host and a valid port. Invalid or empty entries
+ * are served "direct" (the page shows the matching warning).
+ * @param {object} proxy stored config entry
+ * @returns {boolean}
+ */
+const isRoutableProxy = (proxy) => Boolean(
+  proxy
+  && PROXY_INFO_TYPE[proxy.type]
+  && typeof proxy.host === 'string'
+  && proxy.host.length > 0
+  && Number.isInteger(Number(proxy.port))
+  && Number(proxy.port) > 0
+  && Number(proxy.port) <= 65535
+  && !proxy.invalid,
+);
+
 /* ------------------------------------------------------------------ */
 /* Live container state (name/color/icon changes tracked in real time)  */
-/*                                                                     */
-/* The proxy binding is keyed by cookieStoreId, which Firefox keeps     */
-/* STABLE when the container is renamed or recolored (by the user or    */
-/* by another extension): contextualIdentities.update() only changes   */
-/* the displayed properties. So renames NEVER break proxy routing.     */
-/* The live state map is used by the export feature so that exported   */
-/* configs always reflect the CURRENT container names and colors.      */
 /* ------------------------------------------------------------------ */
 
 // cookieStoreId -> { name, color, icon } (current container state).
@@ -244,7 +403,7 @@ const loadContainerMap = async () => {
 
 /**
  * Tell the import/export page that the container list/state changed,
- * so the page can inform the user that exports use fresh data.
+ * so the page re-renders the container list.
  * @returns {Promise<void>}
  */
 const broadcastContainersChanged = async () => {
@@ -307,17 +466,6 @@ const removeStaleBindings = async () => {
 
 /* ------------------------------------------------------------------ */
 /* Proxy settings conflict guard                                       */
-/*                                                                     */
-/* The WebExtensions API cannot BLOCK another extension from changing  */
-/* proxy settings, and it cannot even detect another extension's       */
-/* proxy.onRequest listener. What IS possible (and implemented here):   */
-/*  - browser.proxy.settings.get() returns { value, levelOfControl,   */
-/*    controlledBy } — "controlled_by_other_extensions" means another */
-/*    extension owns the browser's proxy settings;                     */
-/*  - proxy.settings.onChange (BrowserSetting.onChange) fires when     */
-/*    the settings change, whatever the source is.                     */
-/* On any conflict a desktop notification is shown and the              */
-/* import/export page displays a persistent warning banner.            */
 /* ------------------------------------------------------------------ */
 
 // Whether a conflict is currently active, and its current reason key.
@@ -380,20 +528,6 @@ const checkProxyControl = async () => {
 
 /* ------------------------------------------------------------------ */
 /* Download manager: blob-URL lifecycle lives HERE, not in the page    */
-/*                                                                     */
-/* The import/export page can be closed while a "Save as" download is  */
-/* still running — any listener or timer owned by the page would die   */
-/* with it and the blob URL would never be revoked. Therefore the      */
-/* export download is performed in THIS background context:            */
-/*  - the page builds the JSON and sends it via an 'export-download'  */
-/*    message;                                                          */
-/*  - the blob is created here, downloads.download is called here;     */
-/*  - the blob URL is revoked by the top-level downloads.onChanged    */
-/*    listener below when the download reaches a final state          */
-/*    (complete/interrupted) — this event wakes the event page, so    */
-/*    the cleanup works even if the page was closed long ago.         */
-/* Per bug 1271345 the URL must NOT be revoked right after            */
-/* downloads.download — only after the final state.                   */
 /* ------------------------------------------------------------------ */
 
 // downloadId -> { blobUrl, timer } for every pending export download.
@@ -457,6 +591,10 @@ const saveFileWithDialog = async (text, filename) => {
   pendingDownloads.set(downloadId, { blobUrl, timer });
 };
 
+/* ------------------------------------------------------------------ */
+/* Container names                                                     */
+/* ------------------------------------------------------------------ */
+
 /**
  * Build a container name from proxy data.
  * @param {object} proxy
@@ -494,7 +632,8 @@ const ensureUniqueName = (name, byName) => {
 /**
  * Create containers for a list of normalized proxies and store the
  * assigned proxies. Sends progress messages to the import/export page
- * and desktop notifications about the import progress.
+ * and desktop notifications about the import progress. Imported
+ * containers are TRACKED with the "control proxy" flag ON.
  * @param {object[]} proxies normalized proxies (see import.js parser)
  * @returns {Promise<{results: object[], skipped: number}>} import summary
  */
@@ -522,8 +661,9 @@ const importFoxyProxies = async (proxies) => {
     const { cookieStoreId } = identity;
     byName.set(name, cookieStoreId);
 
-    // Assign the proxy to the container: store the binding in the config.
-    config[cookieStoreId] = proxy;
+    // Assign the proxy to the container: store the binding in the
+    // config. control defaults to true (proxy enabled on import).
+    config[cookieStoreId] = { ...proxy, control: proxy.control !== false };
     results.push({ name, cookieStoreId, colorCode, proxy });
   }
 
@@ -546,6 +686,7 @@ const importFoxyProxies = async (proxies) => {
 /* ------------------------------------------------------------------ */
 
 let proxyCache = new Map();
+let settingsCache = { ...DEFAULT_SETTINGS };
 
 /**
  * Saved promise of the last cache reload. Event handlers await it, so
@@ -555,12 +696,13 @@ let proxyCache = new Map();
 let cacheReady = Promise.resolve();
 
 /**
- * Reload the proxy config cache from storage.
+ * Reload the proxy config + settings caches from storage.
  * @returns {Promise<void>}
  */
 const refreshProxyCache = async () => {
-  const config = await readProxyConfig();
+  const [config, settings] = await Promise.all([readProxyConfig(), readSettings()]);
   proxyCache = new Map(Object.entries(config));
+  settingsCache = settings;
 };
 
 /**
@@ -576,6 +718,17 @@ const scheduleCacheReload = () => {
 
 /**
  * proxy.onRequest handler: return the proxy assigned to the container.
+ * Routing rules (in order):
+ *  1. not a container tab, or the container is not tracked -> direct;
+ *  2. the global "enableAll" switch is off -> direct (proxies disabled
+ *     for ALL tracked containers);
+ *  3. the container's "control" flag is off -> direct;
+ *  4. the stored proxy is not routable (invalid input) -> direct;
+ *  5. otherwise route through the proxy. proxyDNS is forced ON for
+ *     SOCKS4/SOCKS5 when the global "dnsAlways" setting is checked
+ *     (proxyDNS is only usable with "socks" and "socks4" — MDN
+ *     proxy.ProxyInfo; for HTTP/HTTPS proxies the hostname is resolved
+ *     by the proxy itself during CONNECT, so nothing is set there).
  * @param {object} details proxy.RequestDetails
  * @returns {object[]} array of proxy.ProxyInfo
  */
@@ -589,13 +742,22 @@ const handleProxyRequest = async (details) => {
   await cacheReady;
 
   const config = proxyCache.get(cookieStoreId);
-  if (!config) {
+  // The MASTER switch acts here ONLY: unchecked, EVERY tracked
+  // container is DIRECT whatever its own "Control proxy" flag.
+  // Checked, each container follows its OWN per-container control
+  // flag (the UI checkbox is fully functional and independent).
+  if (!config || settingsCache.enableAll === false || config.control === false) {
+    return [{ type: 'direct' }];
+  }
+  if (!isRoutableProxy(config)) {
     return [{ type: 'direct' }];
   }
 
-  const { type, host, port, proxyDNS } = config;
-  const proxy = { type, host, port: Number(port) };
-  if (type === 'socks5' || type === 'socks4') proxy.proxyDNS = Boolean(proxyDNS);
+  const infoType = PROXY_INFO_TYPE[config.type];
+  const proxy = { type: infoType, host: config.host, port: Number(config.port) };
+  if (infoType === 'socks' || infoType === 'socks4') {
+    proxy.proxyDNS = settingsCache.dnsAlways === true ? true : Boolean(config.proxyDNS);
+  }
   return [proxy];
 };
 
@@ -619,38 +781,319 @@ const handleAuthRequired = async (details) => {
   return { authCredentials: { username, password } };
 };
 
+/* ------------------------------------------------------------------ */
+/* Container management (the import/export page sends messages)        */
+/* ------------------------------------------------------------------ */
+
 /**
- * runtime.onMessage handler: import command and export request from the
- * import/export page. Never throws: errors are returned as { error }
- * and a notification is shown, so nothing fails silently.
+ * Build the full container list for the page: EVERY Firefox container,
+ * each with the tracked flag, its stored proxy (or null), the "control"
+ * flag and the current hex color code.
+ * @returns {Promise<object>} { identities, settings, supportedColors,
+ *                              supportedIcons }
+ */
+const listContainers = async () => {
+  await Promise.all([loadContainerMap(), loadSupportedStyles()]);
+  const config = await readProxyConfig();
+  const settings = await readSettings();
+
+  const identities = [...containerMap.entries()].map(([cookieStoreId, container]) => {
+    const entry = config[cookieStoreId] ?? null;
+    const match = supportedColors.find(({ color }) => color === container.color);
+    return {
+      cookieStoreId,
+      name: container.name,
+      color: container.color,
+      icon: container.icon,
+      colorCode: match?.colorCode ?? '',
+      tracked: Boolean(entry),
+      control: entry ? entry.control !== false : false,
+      invalid: entry ? !isRoutableProxy(entry) : false,
+      proxy: entry
+        ? {
+          type: entry.type ?? '',
+          host: entry.host ?? '',
+          port: entry.port ?? 0,
+          proxyDNS: entry.proxyDNS ?? false,
+          username: entry.username ?? '',
+          password: entry.password ?? '',
+          title: entry.title ?? '',
+        }
+        : null,
+    };
+  });
+
+  return {
+    identities,
+    settings,
+    supportedColors,
+    supportedIcons,
+  };
+};
+
+/**
+ * Store (or replace) the proxy of a tracked container. The proxy comes
+ * from the page's "type:host:port" input, parsed by the page and
+ * re-validated here. An empty proxy string clears the proxy.
+ * @param {string} cookieStoreId
+ * @param {object|null} proxy parsed proxy or null (empty)
+ * @returns {Promise<object>} { ok: true }
+ */
+const setContainerProxy = async (cookieStoreId, proxy) => {
+  if (!cookieStoreId || !containerMap.has(cookieStoreId)) {
+    throw new Error('unknown container');
+  }
+  const config = await readProxyConfig();
+  const previous = config[cookieStoreId] ?? { control: false };
+  if (proxy === null) {
+    // Empty input: keep the tracked container, clear the proxy.
+    config[cookieStoreId] = { ...previous, host: '', port: 0, type: '', invalid: false };
+  } else {
+    const normalized = normalizeProxyInput(proxy);
+    config[cookieStoreId] = {
+      ...previous,
+      ...normalized,
+      username: normalized.username || previous.username || '',
+      password: normalized.password || previous.password || '',
+      title: normalized.title || previous.title || '',
+      cc: normalized.cc || previous.cc || '',
+      country: normalized.country || previous.country || '',
+      city: normalized.city || previous.city || '',
+      color: normalized.color || previous.color || '',
+      proxyDNS: previous.proxyDNS ?? normalized.proxyDNS,
+    };
+  }
+  await writeProxyConfig(config);
+  await refreshProxyCache();
+  return { ok: true };
+};
+
+/**
+ * Turn the proxy control of a tracked container on/off. The container
+ * stays tracked; with control off, its requests are served direct.
+ * @param {string} cookieStoreId
+ * @param {boolean} control
+ * @returns {Promise<object>} { ok: true }
+ */
+const setContainerControl = async (cookieStoreId, control) => {
+  const config = await readProxyConfig();
+  if (!config[cookieStoreId]) throw new Error('unknown container');
+  config[cookieStoreId] = { ...config[cookieStoreId], control: control !== false };
+  await writeProxyConfig(config);
+  await refreshProxyCache();
+  return { ok: true };
+};
+
+/**
+ * Add a new tracked container: empty proxy input, "control proxy"
+ * checkbox unchecked, auto-distinct color and auto-generated icon.
+ * @returns {Promise<object>} the new identity summary
+ */
+const addContainer = async () => {
+  await Promise.all([loadSupportedStyles(), loadContainerMap()]);
+  const byName = new Map([...containerMap.values()].map(({ name }) => [name, true]));
+  const base = browser.i18n.getMessage('newContainerName') || 'Container';
+  const name = ensureUniqueName(base, byName);
+
+  const color = pickDistinctColor();
+  const icon = pickDistinctIcon();
+  const identity = await browser.contextualIdentities.create({ name, color: color.color, icon });
+  const { cookieStoreId } = identity;
+
+  // Tracked container with an EMPTY proxy and control OFF (per spec:
+  // a new container starts with the "control proxy" checkbox off).
+  const config = await readProxyConfig();
+  config[cookieStoreId] = {
+    skip: false,
+    type: '',
+    host: '',
+    port: 0,
+    username: '',
+    password: '',
+    title: '',
+    cc: '',
+    country: '',
+    city: '',
+    proxyDNS: true,
+    color: '',
+    control: false,
+    invalid: false,
+  };
+  await writeProxyConfig(config);
+  await refreshProxyCache();
+
+  return {
+    cookieStoreId,
+    name,
+    color: color.color,
+    colorCode: color.colorCode,
+    icon,
+    tracked: true,
+    control: false,
+  };
+};
+
+/**
+ * Remove a single container (tracked or untracked) and its binding.
+ * @param {string} cookieStoreId
+ * @returns {Promise<object>} { ok: true }
+ */
+const removeContainer = async (cookieStoreId) => {
+  if (!containerMap.has(cookieStoreId)) {
+    await loadContainerMap();
+  }
+  if (!containerMap.has(cookieStoreId)) throw new Error('unknown container');
+  await browser.contextualIdentities.remove(cookieStoreId);
+  // The onRemoved listener removes the binding and broadcasts the
+  // change; nothing else to do here.
+  return { ok: true };
+};
+
+/**
+ * Remove EVERY Firefox container (tracked and untracked).
+ * @returns {Promise<object>} { removed: number }
+ */
+const removeAllContainers = async () => {
+  const identities = await browser.contextualIdentities.query({});
+  let removed = 0;
+  for (const { cookieStoreId } of identities) {
+    // eslint-disable-next-line no-await-in-loop
+    await browser.contextualIdentities.remove(cookieStoreId);
+    removed += 1;
+  }
+  return { removed };
+};
+
+/**
+ * Remove every container TRACKED by this extension (imported or added
+ * through the page). Untracked containers are left untouched.
+ * @returns {Promise<object>} { removed: number }
+ */
+const removeAllActiveContainers = async () => {
+  const [identities, config] = await Promise.all([
+    browser.contextualIdentities.query({}),
+    readProxyConfig(),
+  ]);
+  let removed = 0;
+  for (const { cookieStoreId } of identities) {
+    if (!(cookieStoreId in config)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await browser.contextualIdentities.remove(cookieStoreId);
+    removed += 1;
+  }
+  return { removed };
+};
+
+/**
+ * Rename a container (any container — the cookieStoreId is stable, so
+ * the proxy binding is not affected).
+ * @param {string} cookieStoreId
+ * @param {string} name
+ * @returns {Promise<object>} { ok: true }
+ */
+const renameContainer = async (cookieStoreId, name) => {
+  const clean = String(name ?? '').trim().slice(0, 60);
+  if (!clean) throw new Error('empty name');
+  await browser.contextualIdentities.update(cookieStoreId, { name: clean });
+  return { ok: true };
+};
+
+/**
+ * Change the color and/or icon of a container.
+ * @param {string} cookieStoreId
+ * @param {object} style { color?, icon? } — supported values only
+ * @returns {Promise<object>} { ok: true }
+ */
+const restyleContainer = async (cookieStoreId, style) => {
+  await loadSupportedStyles();
+  const update = {};
+  if (style?.color) {
+    if (!supportedColors.some(({ color }) => color === style.color)) {
+      throw new Error('unsupported color');
+    }
+    update.color = style.color;
+  }
+  if (style?.icon) {
+    if (!supportedIcons.includes(style.icon)) {
+      throw new Error('unsupported icon');
+    }
+    update.icon = style.icon;
+  }
+  if (Object.keys(update).length === 0) throw new Error('nothing to update');
+  await browser.contextualIdentities.update(cookieStoreId, update);
+  return { ok: true };
+};
+
+/**
+ * Auto color for ONE container: the supported color most different
+ * from the colors of all OTHER containers (human-distinguishable).
+ * @param {string} cookieStoreId
+ * @returns {Promise<object>} { color, colorCode }
+ */
+const autoColorContainer = async (cookieStoreId) => {
+  await Promise.all([loadSupportedStyles(), loadContainerMap()]);
+  const color = pickRotatedColor(cookieStoreId);
+  await browser.contextualIdentities.update(cookieStoreId, { color: color.color });
+  return { color: color.color, colorCode: color.colorCode };
+};
+
+/**
+ * Auto icon for ONE container: an icon not used by any other container
+ * (deterministic fallback when all icons are in use).
+ * @param {string} cookieStoreId
+ * @returns {Promise<object>} { icon }
+ */
+const autoIconContainer = async (cookieStoreId) => {
+  await Promise.all([loadSupportedStyles(), loadContainerMap()]);
+  const icon = pickRotatedIcon(cookieStoreId);
+  await browser.contextualIdentities.update(cookieStoreId, { icon });
+  return { icon };
+};
+
+/* ------------------------------------------------------------------ */
+/* runtime.onMessage handler                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Handle a message from the import/export page. Never throws: errors
+ * are returned as { error } so nothing fails silently.
  *
  * Messages:
- *  - { type: 'import-foxyproxies', proxies } — run the import
- *  - { type: 'get-assigned-proxies' }       — list proxies assigned to
- *    containers merged with the CURRENT container state (for exports)
- *  - { type: 'get-conflict-state' }         — lightweight conflict flag
- *  - { type: 'export-download', text, filename } — save an export JSON
- *    through the "Save as" dialog (blob lifecycle owned here)
+ *  - { type: 'import-foxyproxies', proxies }       — run the import
+ *  - { type: 'get-assigned-proxies' }               — proxies assigned
+ *    to containers merged with the CURRENT container state (exports)
+ *  - { type: 'get-conflict-state' }                 — conflict flag
+ *  - { type: 'export-download', text, filename }    — save export JSON
+ *  - { type: 'list-containers' }                    — full page state
+ *  - { type: 'set-proxy', cookieStoreId, proxy }    — edit a proxy
+ *  - { type: 'set-dns', cookieStoreId, dnsThroughProxy } — per-container
+ *    "DNS through proxy" flag (socks4/socks5 only)
+ *  - { type: 'set-settings', settings }             — global switches
+ *  - { type: 'add-container' }                      — add tracked one
+ *  - { type: 'remove-container', cookieStoreId }    — remove one
+ *  - { type: 'remove-all-containers' }              — remove all
+ *  - { type: 'remove-active-containers' }           — remove tracked
+ *  - { type: 'rename-container', cookieStoreId, name }
+ *  - { type: 'restyle-container', cookieStoreId, style }
+ *  - { type: 'auto-color', cookieStoreId } / { type: 'auto-icon', cookieStoreId }
  * @param {object} message
  * @returns {Promise<object|null>}
  */
-const handleMessage = async ({ type, proxies, text, filename }) => {
-  if (type === 'get-conflict-state') {
-    return { conflict: conflictActive, reason: lastConflictReason };
-  }
-  if (type === 'export-download') {
-    try {
+const handleMessage = async (message) => {
+  const { type } = message ?? {};
+  try {
+    if (type === 'get-conflict-state') {
+      return { conflict: conflictActive, reason: lastConflictReason };
+    }
+    if (type === 'export-download') {
+      const { text, filename } = message;
       if (typeof text !== 'string' || text.length === 0 || typeof filename !== 'string') {
         throw new Error('invalid export request');
       }
       await saveFileWithDialog(text, filename);
       return { ok: true };
-    } catch (error) {
-      return { error: String(error?.message ?? error) };
     }
-  }
-  if (type === 'get-assigned-proxies') {
-    try {
+    if (type === 'get-assigned-proxies') {
       // Always read the LIVE container state: renames/recolors made by
       // the user or other extensions must be reflected in the export.
       await loadContainerMap();
@@ -658,7 +1101,10 @@ const handleMessage = async ({ type, proxies, text, filename }) => {
       await loadSupportedStyles();
       const config = await readProxyConfig();
       const entries = Object.entries(config)
-        .filter(([cookieStoreId, proxy]) => !proxy.skip && containerMap.has(cookieStoreId))
+        .filter(([cookieStoreId, proxy]) => !proxy.skip
+          && containerMap.has(cookieStoreId)
+          && proxy.control !== false
+          && isRoutableProxy(proxy))
         .map(([cookieStoreId, proxy]) => {
           const container = { ...containerMap.get(cookieStoreId) };
           const match = supportedColors.find(({ color }) => color === container.color);
@@ -666,19 +1112,77 @@ const handleMessage = async ({ type, proxies, text, filename }) => {
           return { cookieStoreId, proxy, container };
         });
       return { entries, conflict: conflictActive };
-    } catch (error) {
-      return { error: String(error?.message ?? error) };
     }
-  }
-  if (type !== 'import-foxyproxies') return null;
-  try {
+    if (type === 'list-containers') {
+      return await listContainers();
+    }
+    if (type === 'set-proxy') {
+      return await setContainerProxy(message.cookieStoreId, message.proxy ?? null);
+    }
+    if (type === 'set-control') {
+      return await setContainerControl(message.cookieStoreId, message.control !== false);
+    }
+    if (type === 'set-dns') {
+      const config = await readProxyConfig();
+      if (!config[message.cookieStoreId]) throw new Error('unknown container');
+      config[message.cookieStoreId] = {
+        ...config[message.cookieStoreId],
+        proxyDNS: message.dnsThroughProxy !== false,
+      };
+      await writeProxyConfig(config);
+      await refreshProxyCache();
+      return { ok: true };
+    }
+
+    if (type === 'set-settings') {
+      const current = await readSettings();
+      const next = {
+        dnsAlways: typeof message.settings?.dnsAlways === 'boolean'
+          ? message.settings.dnsAlways
+          : current.dnsAlways,
+        enableAll: typeof message.settings?.enableAll === 'boolean'
+          ? message.settings.enableAll
+          : current.enableAll,
+      };
+      await writeSettings(next);
+      await refreshProxyCache();
+      return { ok: true, settings: next };
+    }
+    if (type === 'add-container') {
+      return await addContainer();
+    }
+    if (type === 'remove-container') {
+      return await removeContainer(message.cookieStoreId);
+    }
+    if (type === 'remove-all-containers') {
+      return await removeAllContainers();
+    }
+    if (type === 'remove-active-containers') {
+      return await removeAllActiveContainers();
+    }
+    if (type === 'rename-container') {
+      return await renameContainer(message.cookieStoreId, message.name);
+    }
+    if (type === 'restyle-container') {
+      return await restyleContainer(message.cookieStoreId, message.style);
+    }
+    if (type === 'auto-color') {
+      return await autoColorContainer(message.cookieStoreId);
+    }
+    if (type === 'auto-icon') {
+      return await autoIconContainer(message.cookieStoreId);
+    }
+    if (type !== 'import-foxyproxies') return null;
+    const { proxies } = message;
     if (!Array.isArray(proxies) || proxies.length === 0) {
       throw new Error(browser.i18n.getMessage('statusNoProxies'));
     }
     return await importFoxyProxies(proxies);
   } catch (error) {
-    console.error('Container Foxy Proxy Importer: import failed:', error);
-    notify(NOTE_ERROR, browser.i18n.getMessage('notifyError').replace('%s', String(error?.message ?? error)));
+    console.error('Container Foxy Proxy Importer: message failed:', error);
+    if (type === 'import-foxyproxies') {
+      notify(NOTE_ERROR, browser.i18n.getMessage('notifyError').replace('%s', String(error?.message ?? error)));
+    }
     return { error: String(error?.message ?? error) };
   }
 };
@@ -689,6 +1193,58 @@ const handleMessage = async ({ type, proxies, text, filename }) => {
 
 // Toolbar icon click opens the import/export page directly (no popup).
 browser.browserAction.onClicked.addListener(openImportPage);
+
+/**
+ * Rotation counters for the auto color / auto icon buttons. Every
+ * click advances the counter, so consecutive clicks walk through the
+ * FULL supported color/icon set: a prime stride (7919) is coprime
+ * with every pool length below it, giving a complete cycle through
+ * the whole set without repeats. The current color/icon is excluded,
+ * so every click produces a VISIBLE change.
+ */
+const autoRotateCounters = new Map();
+
+/**
+ * Next rotation step for a key.
+ * @param {string} key
+ * @returns {number}
+ */
+const nextAutoRotate = (key) => {
+  const step = (autoRotateCounters.get(key) ?? 0) + 1;
+  autoRotateCounters.set(key, step);
+  return step;
+};
+
+/**
+ * Auto color for ONE container that CHANGES ON EVERY CLICK: walks the
+ * whole supported color set (never the current color) in a
+ * deterministic-but-varied order seeded by the container id.
+ * @param {string} cookieStoreId
+ * @returns {{ color: string, colorCode: string }}
+ */
+const pickRotatedColor = (cookieStoreId) => {
+  const current = containerMap.get(cookieStoreId)?.color ?? null;
+  const pool = supportedColors.filter(({ color }) => color !== current);
+  const base = pool.length > 0 ? pool : supportedColors;
+  const start = hashString(`${cookieStoreId}::auto-color`) % base.length;
+  const step = nextAutoRotate(`color:${cookieStoreId}`);
+  return base[(start + step * 7919) % base.length];
+};
+
+/**
+ * Auto icon for ONE container that CHANGES ON EVERY CLICK: same
+ * rotation over the full supported icon set (never the current icon).
+ * @param {string} cookieStoreId
+ * @returns {string}
+ */
+const pickRotatedIcon = (cookieStoreId) => {
+  const current = containerMap.get(cookieStoreId)?.icon ?? null;
+  const pool = supportedIcons.filter((icon) => icon !== current);
+  const base = pool.length > 0 ? pool : supportedIcons;
+  const start = hashString(`${cookieStoreId}::auto-icon`) % base.length;
+  const step = nextAutoRotate(`icon:${cookieStoreId}`);
+  return base[(start + step * 7919) % base.length];
+};
 
 browser.proxy.onRequest.addListener(handleProxyRequest, { urls: ['<all_urls>'] });
 
@@ -701,15 +1257,16 @@ browser.webRequest.onAuthRequired.addListener(
 browser.runtime.onMessage.addListener(handleMessage);
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes[CONFIG_KEY]) {
+  if (area === 'local' && (changes[CONFIG_KEY] || changes[SETTINGS_KEY])) {
     scheduleCacheReload();
   }
 });
 
 // Container state tracking: keep the live map fresh so renames/recolors
 // (from the browser UI or other container extensions) are reflected in
-// the current binding display AND in the export data. The binding key
-// is the stable cookieStoreId, so the proxy routing itself never breaks.
+// the container list, the export data and the notifications. The
+// binding key is the stable cookieStoreId, so the proxy routing itself
+// never breaks. Every change also tells the page to re-render.
 browser.contextualIdentities.onCreated.addListener(({ contextualIdentity }) => {
   const { cookieStoreId, name, color, icon } = contextualIdentity;
   containerMap.set(cookieStoreId, { name, color, icon });
