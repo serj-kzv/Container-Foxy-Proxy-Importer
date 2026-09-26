@@ -130,32 +130,6 @@ rounded corners, no shadows — and adapts to the system light/dark preference
 dark grayscale palette). The toolbar icon is monochrome and adapts to the
 system theme too. The page content and the fixed control bar are CENTERED with a fixed max width, so the layout stays together on any window size. Fully localized: 🇬🇧 English, 🇷🇺 Russian.
 
-## 🚀 Installation (from the generator .bat)
-
-1. Save the `.bat` file as UTF-8 **without BOM**, double-click it.
-   It creates the folder `container-proxy-importer` with all 12 files.
-2. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
-3. Click **Load Temporary Add-on…** and select the `manifest.json` inside the
-   folder.
-4. Click the toolbar icon — the import/export page opens in a tab. 🎉
-
-> 💡 For a permanent install, use [web-ext](https://github.com/mozilla/web-ext)
-> (`web-ext build`) or sign the extension on
-> [addons.mozilla.org](https://addons.mozilla.org/).
-
-## 📁 Project structure
-
-    container-proxy-importer/
-    ├── manifest.json          # MV2 manifest (Firefox 153+)
-    ├── background.js          # event page: containers, routing, management, conflict guard
-    ├── import.html/.css/.js   # import/export + container management page
-    ├── icon.svg               # toolbar icon (monochrome, theme-adaptive)
-    ├── icons/icon-template.svg
-    ├── _locales/en, _locales/ru
-    ├── README.md              # this file
-    ├── LICENSE                 # MIT
-    └── .gitignore
-
 ## 🧠 How it works
 
 1. 📥 The page parses any FoxyProxy format (JSON or XML).
