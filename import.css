@@ -1,0 +1,244 @@
+/*
+ * Import/export page styles with theme support.
+ *
+ * Two adaptation levels:
+ *  1. Base: CSS custom properties + the prefers-color-scheme media
+ *     query (system light/dark preference).
+ *  2. Firefox theme: import.js reads browser.theme.getCurrent() and
+ *     overrides the same custom properties with the colors of the
+ *     theme installed in Firefox (frame, toolbar, toolbar_text…),
+ *     reacting to browser.theme.onUpdated in real time.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Base palette: light theme by default. */
+  --page-background: #f7f6fb;
+  --page-foreground: #241b4d;
+  --muted-foreground: #5b5480;
+  --accent: #2b6cb0;
+  --accent-contrast: #ffffff;
+  --secondary-border: rgba(36, 27, 77, 0.35);
+  --zone-background: rgba(43, 108, 176, 0.06);
+  --zone-border: #2b6cb0;
+  --zone-active: rgba(43, 108, 176, 0.16);
+  --separator: rgba(36, 27, 77, 0.12);
+  --status-progress: #8a6d00;
+  --status-error: #c0392b;
+  --status-ok: #1e7e34;
+}
+
+/* Base dark palette: used when the OS prefers dark mode and no
+ * Firefox theme colors override it. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-background: #1b1533;
+    --page-foreground: #f2f0fa;
+    --muted-foreground: #b7aee0;
+    --accent: #5ad1ff;
+    --accent-contrast: #1b1533;
+    --secondary-border: rgba(242, 240, 250, 0.4);
+    --zone-background: rgba(90, 209, 255, 0.04);
+    --zone-border: #5ad1ff;
+    --zone-active: rgba(90, 209, 255, 0.12);
+    --separator: rgba(255, 255, 255, 0.08);
+    --status-progress: #ffd15c;
+    --status-error: #ff7b72;
+    --status-ok: #7ee787;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+  background: var(--page-background);
+  color: var(--page-foreground);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sticky action bar: import + two exports, one row, always visible    */
+/* ------------------------------------------------------------------ */
+
+#action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  /* Opaque page background + separator: scrolling content must not
+   * shine through the pinned bar. The negative side margins make the
+   * bar span the full width of the padded body column. */
+  margin: 0 -16px 16px;
+  padding: 12px 16px;
+  background: var(--page-background);
+  border-bottom: 1px solid var(--separator);
+}
+
+#action-bar button {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Import button is primary (accent fill); the two export buttons are
+ * secondary (transparent with a border). */
+#action-bar #export-modern,
+#action-bar #export-legacy {
+  background: transparent;
+  color: var(--page-foreground);
+  border: 1px solid var(--secondary-border);
+}
+
+#action-bar #export-modern:hover,
+#action-bar #export-legacy:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  filter: none;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 24px 0 4px;
+}
+
+#hint,
+#export-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+#export-hint {
+  margin: 0 0 8px;
+}
+
+/* Conflict warning banner (shown when another extension or manual
+ * browser settings control the proxy configuration). Plain border +
+ * text color only — no color-mix() for maximum compatibility. */
+#conflict-warning {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--status-error);
+  border-radius: 8px;
+  color: var(--status-error);
+  font-size: 13px;
+  white-space: pre-line;
+}
+
+/* Drag & drop zone: a secondary target for dropping config files.
+ * The main import button lives in the sticky action bar above. */
+#drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border: 2px dashed var(--zone-border);
+  border-radius: 12px;
+  background: var(--zone-background);
+}
+
+#drop-zone.dragover {
+  background: var(--zone-active);
+}
+
+#drop-hint {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+/* Base button styles (used by the sticky action bar). */
+button {
+  padding: 12px 20px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.status {
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--status-progress);
+  white-space: pre-line;
+}
+
+.status.error {
+  color: var(--status-error);
+}
+
+.status.ok {
+  color: var(--status-ok);
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.results li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+  font-size: 13px;
+}
+
+.results li:last-child {
+  border-bottom: none;
+}
+
+.results .dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.results .meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.results .meta .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.results .meta .proxy {
+  color: var(--muted-foreground);
+}

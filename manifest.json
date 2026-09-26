@@ -1,0 +1,39 @@
+{
+  "manifest_version": 2,
+  "name": "__MSG_extensionName__",
+  "version": "1.0.0",
+  "description": "__MSG_extensionDescription__",
+  "author": "Siarhei Kuzeyeu",
+  "default_locale": "en",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "container-proxy-importer@j6505821.example",
+      "strict_min_version": "153.0"
+    }
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "browser_action": {
+    "default_title": "__MSG_buttonTitle__",
+    "default_icon": "icon.svg"
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "permissions": [
+    "proxy",
+    "contextualIdentities",
+    "cookies",
+    "storage",
+    "unlimitedStorage",
+    "webRequest",
+    "webRequestBlocking",
+    "notifications",
+    "downloads",
+    "theme",
+    "<all_urls>"
+  ]
+}

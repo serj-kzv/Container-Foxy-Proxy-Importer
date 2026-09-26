@@ -1,0 +1,47 @@
+# ------------------------------------------------------------------
+# web-ext build artifacts (web-ext build writes zips here by default)
+# ------------------------------------------------------------------
+web-ext-artifacts/
+*.zip
+*.xpi
+
+# ------------------------------------------------------------------
+# Node.js (if you add tooling such as eslint or web-ext via npm)
+# ------------------------------------------------------------------
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# ------------------------------------------------------------------
+# Operating system junk
+# ------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ------------------------------------------------------------------
+# Editors and IDEs
+# ------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ------------------------------------------------------------------
+# Temporary and log files
+# ------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak

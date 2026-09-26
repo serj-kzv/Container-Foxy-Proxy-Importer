@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Support both light and dark system themes for built-in widgets. -->
+    <meta name="color-scheme" content="light dark" />
+    <title>Container Foxy Proxy Importer</title>
+    <link rel="stylesheet" href="import.css" />
+  </head>
+  <body>
+    <!-- Sticky action bar: the three main actions (import + two
+         exports) are pinned to the top in a single row and stay
+         visible while the page scrolls. position: sticky has been
+         supported by Firefox since version 32 (all element types
+         since 59), so this is fully compatible with the target
+         browsers. -->
+    <div id="action-bar">
+      <button id="select-file" type="button"></button>
+      <button id="export-modern" type="button"></button>
+      <button id="export-legacy" type="button"></button>
+      <!-- Hidden file picker: safe inside a tab (bug 1658694 only
+           destroyed popups); triggered by the import button. -->
+      <input id="file-input" type="file" accept=".json,application/json,.xml,application/xml,text/xml" hidden />
+    </div>
+
+    <h1 id="title"></h1>
+    <p id="hint"></p>
+
+    <!-- Persistent warning banner: shown when another extension or
+         manual browser settings control the proxy configuration. -->
+    <div id="conflict-warning" hidden></div>
+
+    <!-- Drag a file here to import it. The main import button lives in
+         the sticky action bar above. -->
+    <div id="drop-zone">
+      <span id="drop-hint"></span>
+    </div>
+
+    <div id="status" class="status"></div>
+    <ul id="results" class="results"></ul>
+
+    <!-- Export section: the buttons are in the sticky action bar;
+         this block explains the two export formats. -->
+    <h2 id="export-title"></h2>
+    <p id="export-hint"></p>
+
+    <script src="import.js"></script>
+  </body>
+</html>

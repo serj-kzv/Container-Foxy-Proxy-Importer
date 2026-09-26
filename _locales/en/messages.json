@@ -1,0 +1,104 @@
+{
+  "extensionName": {
+    "message": "Container Foxy Proxy Importer"
+  },
+  "extensionDescription": {
+    "message": "Imports a FoxyProxy configuration (modern and legacy formats, incl. foxyproxy.xml) and automatically creates Firefox containers, assigning a matching proxy to each container. Exports the assigned proxies back into FoxyProxy config formats."
+  },
+  "buttonTitle": {
+    "message": "Container Foxy Proxy Importer"
+  },
+  "importHint": {
+    "message": "Choose a FoxyProxy configuration file (JSON from FoxyProxy 6+ or XML from FoxyProxy 4.x), or drag it here. Containers and proxies will be created automatically."
+  },
+  "chooseFile": {
+    "message": "Choose FoxyProxy file…"
+  },
+  "dropHint": {
+    "message": "…or drag a FoxyProxy config file and drop it here"
+  },
+  "exportTitle": {
+    "message": "Export"
+  },
+  "exportHint": {
+    "message": "Export the proxies assigned to your containers into a FoxyProxy configuration file. Each button opens a save dialog. Exports always use the CURRENT container names and colors. The modern file carries BOTH FoxyProxy formats: import it with the main “Import” button on the FoxyProxy “Import” tab (then press Save) OR via “Import from older versions” — either dialog works. The legacy file is imported via “Import from older versions”."
+  },
+  "statusConflict": {
+    "message": "Warning: proxy settings are controlled by %s. This may override the proxies of this extension. Open about:addons and disable the conflicting extension, or reset the browser proxy settings to “Use system proxy settings”."
+  },
+  "conflictOtherExtension": {
+    "message": "another extension"
+  },
+  "conflictManualSettings": {
+    "message": "manual proxy settings in the browser"
+  },
+  "conflictGeneric": {
+    "message": "another extension or manual browser settings"
+  },
+  "statusContainersChanged": {
+    "message": "Container list changed (rename/color/removal). Exports will use the current container names."
+  },
+  "exportModern": {
+    "message": "Export current config (FoxyProxy 8+/9+)"
+  },
+  "exportLegacy": {
+    "message": "Export legacy config (FoxyProxy Standard 6.x–7.5.1)"
+  },
+  "statusWaiting": {
+    "message": "Waiting for a file…"
+  },
+  "statusReading": {
+    "message": "Reading file “%s”…"
+  },
+  "statusNoProxies": {
+    "message": "No proxy servers found in the file. Supported formats: FoxyProxy 8+/9+ export (data), FoxyProxy 6.x–7.5.1 export (proxySettings), FoxyProxy 6.x storage backup, or FoxyProxy 4.x foxyproxy.xml."
+  },
+  "statusOnlySkipped": {
+    "message": "All %s entries are direct/PAC — nothing to import."
+  },
+  "statusFound": {
+    "message": "Found %1$s proxies (%2$s direct/PAC entries will be skipped). Creating containers…"
+  },
+  "statusCreating": {
+    "message": "Creating container %1$s of %2$s: %3$s…"
+  },
+  "statusDone": {
+    "message": "Done! Containers created: %s. Proxies assigned automatically."
+  },
+  "statusSkipped": {
+    "message": "(skipped %s direct/PAC entries)"
+  },
+  "statusBadXml": {
+    "message": "The XML file could not be parsed."
+  },
+  "statusUnavailable": {
+    "message": "Import failed: background context is unavailable."
+  },
+  "statusExportEmpty": {
+    "message": "Nothing to export: no proxies are assigned to containers yet. Import a configuration first."
+  },
+  "statusExportDone": {
+    "message": "Export finished: %s proxies written to the file."
+  },
+  "statusExportCancelled": {
+    "message": "Export cancelled: the save dialog was closed."
+  },
+  "statusError": {
+    "message": "Error: %s"
+  },
+  "notifyStart": {
+    "message": "Import started: creating containers for %s proxies…"
+  },
+  "notifyDone": {
+    "message": "Import finished: %1$s containers created, %2$s entries skipped."
+  },
+  "notifyError": {
+    "message": "Import failed: %s"
+  },
+  "notifyConflict": {
+    "message": "Proxy settings are controlled by %s — this may override the container proxies. See the import page for details."
+  },
+  "notifyBindingRemoved": {
+    "message": "Container “%s” was removed — its proxy binding was deleted."
+  }
+}

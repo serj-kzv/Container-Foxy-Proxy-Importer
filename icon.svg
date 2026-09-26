@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <!-- Monochrome adaptive icon. Firefox evaluates the embedded
+       prefers-color-scheme media query in WebExtension SVG icons
+       (MDN: manifest.json, default_icon), so one file serves both
+       light and dark themes: near-black strokes on a light rounded
+       square, near-white strokes on a dark one. -->
+  <style>
+    .bg { fill: #f9f9fb; }
+    .fg { stroke: #272727; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #2b2b33; }
+      .fg { stroke: #f9f9fb; }
+    }
+  </style>
+  <rect class="bg" width="96" height="96" rx="18"/>
+  <g class="fg" fill="none" stroke-width="3" stroke-linecap="round">
+    <circle cx="43" cy="40" r="21"/>
+    <ellipse cx="43" cy="40" rx="9.5" ry="21"/>
+    <path d="M22 40h42"/>
+    <path d="M26 30c11 4 23 4 34 0"/>
+    <path d="M26 50c11 -4 23 -4 34 0"/>
+  </g>
+  <g class="fg" fill="none" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M55 57h30l5 9v24H50V66z"/>
+    <path d="M50 66h40"/>
+    <path d="M70 66V88"/>
+    <path d="M70 30v12"/>
+    <path d="M64 36l6 -7 6 7"/>
+  </g>
+</svg>

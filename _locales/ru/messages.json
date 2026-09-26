@@ -1,0 +1,104 @@
+{
+  "extensionName": {
+    "message": "Container Foxy Proxy Importer"
+  },
+  "extensionDescription": {
+    "message": "Импортирует конфигурацию FoxyProxy (современный и устаревший форматы, включая foxyproxy.xml) и автоматически создаёт контейнеры Firefox, назначая каждому контейнеру соответствующий прокси. Экспортирует назначенные прокси обратно в форматы конфигов FoxyProxy."
+  },
+  "buttonTitle": {
+    "message": "Container Foxy Proxy Importer"
+  },
+  "importHint": {
+    "message": "Выберите файл конфигурации FoxyProxy (JSON из FoxyProxy 6+ или XML из FoxyProxy 4.x) или перетащите его сюда. Контейнеры и прокси будут созданы автоматически."
+  },
+  "chooseFile": {
+    "message": "Выбрать файл FoxyProxy…"
+  },
+  "dropHint": {
+    "message": "…или перетащите файл конфигурации FoxyProxy сюда"
+  },
+  "exportTitle": {
+    "message": "Экспорт"
+  },
+  "exportHint": {
+    "message": "Экспортируйте прокси, назначенные вашим контейнерам, в файл конфигурации FoxyProxy. Каждая кнопка открывает диалог сохранения файла. Экспорт всегда использует АКТУАЛЬНЫЕ имена и цвета контейнеров. Современный файл содержит ОБА формата FoxyProxy: импортируйте его основной кнопкой «Import» на вкладке «Import» (затем нажмите Save) ЛИБО через «Import from older versions» — работает любой диалог. Legacy-файл импортируется через «Import from older versions»."
+  },
+  "statusConflict": {
+    "message": "Внимание: настройками прокси управляет %s. Это может перекрывать прокси этого расширения. Откройте about:addons и отключите конфликтующее расширение либо верните настройкам прокси значение «Использовать системные настройки прокси»."
+  },
+  "conflictOtherExtension": {
+    "message": "другое расширение"
+  },
+  "conflictManualSettings": {
+    "message": "ручная настройка прокси в браузере"
+  },
+  "conflictGeneric": {
+    "message": "другое расширение или ручные настройки браузера"
+  },
+  "statusContainersChanged": {
+    "message": "Список контейнеров изменился (переименование/цвет/удаление). Экспорт будет использовать актуальные имена контейнеров."
+  },
+  "exportModern": {
+    "message": "Экспорт актуального конфига (FoxyProxy 8+/9+)"
+  },
+  "exportLegacy": {
+    "message": "Экспорт legacy-конфига (FoxyProxy Standard 6.x–7.5.1)"
+  },
+  "statusWaiting": {
+    "message": "Ожидание файла…"
+  },
+  "statusReading": {
+    "message": "Чтение файла «%s»…"
+  },
+  "statusNoProxies": {
+    "message": "В файле не найдено ни одного прокси-сервера. Поддерживаемые форматы: экспорт FoxyProxy 8+/9+ (data), экспорт FoxyProxy 6.x–7.5.1 (proxySettings), бэкап storage FoxyProxy 6.x, foxyproxy.xml FoxyProxy 4.x."
+  },
+  "statusOnlySkipped": {
+    "message": "Все %s записей — direct/PAC, импортировать нечего."
+  },
+  "statusFound": {
+    "message": "Найдено прокси: %1$s (%2$s записей direct/PAC будут пропущены). Создаю контейнеры…"
+  },
+  "statusCreating": {
+    "message": "Создаю контейнер %1$s из %2$s: %3$s…"
+  },
+  "statusDone": {
+    "message": "Готово! Контейнеров: %s. Прокси назначены автоматически."
+  },
+  "statusSkipped": {
+    "message": "(пропущено записей direct/PAC: %s)"
+  },
+  "statusBadXml": {
+    "message": "Не удалось разобрать XML-файл."
+  },
+  "statusUnavailable": {
+    "message": "Импорт не выполнен: фоновый контекст недоступен."
+  },
+  "statusExportEmpty": {
+    "message": "Экспортировать нечего: прокси ещё не назначены контейнерам. Сначала выполните импорт конфигурации."
+  },
+  "statusExportDone": {
+    "message": "Экспорт завершён: прокси записано в файл: %s."
+  },
+  "statusExportCancelled": {
+    "message": "Экспорт отменён: диалог сохранения был закрыт."
+  },
+  "statusError": {
+    "message": "Ошибка: %s"
+  },
+  "notifyStart": {
+    "message": "Импорт запущен: создаю контейнеры для %s прокси…"
+  },
+  "notifyDone": {
+    "message": "Импорт завершён: создано контейнеров: %1$s, пропущено записей: %2$s."
+  },
+  "notifyError": {
+    "message": "Ошибка импорта: %s"
+  },
+  "notifyConflict": {
+    "message": "Настройками прокси управляет %s — это может перекрывать прокси контейнеров. Подробности на странице импорта."
+  },
+  "notifyBindingRemoved": {
+    "message": "Контейнер «%s» удалён — его привязка к прокси удалена."
+  }
+}
