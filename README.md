@@ -4,7 +4,7 @@
 > **Firefox container**, and route each container through its own proxy —
 > automatically. Manage every container right on the page.
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Firefox](https://img.shields.io/badge/Firefox-153%2B-orange)
+![Version](https://img.shields.io/badge/version-2.0.1-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Firefox](https://img.shields.io/badge/Firefox-153%2B-orange)
 
 ## ✨ Features
 
@@ -130,7 +130,33 @@ rounded corners, no shadows — and adapts to the system light/dark preference
 dark grayscale palette). The toolbar icon is monochrome and adapts to the
 system theme too. The page content and the fixed control bar are CENTERED with a fixed max width, so the layout stays together on any window size. Fully localized: 🇬🇧 English, 🇷🇺 Russian.
 
-### 🧠 How it works
+## 🚀 Installation (from the generator .bat)
+
+1. Save the `.bat` file as UTF-8 **without BOM**, double-click it.
+   It creates the folder `container-proxy-importer` with all 12 files.
+2. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and select the `manifest.json` inside the
+   folder.
+4. Click the toolbar icon — the import/export page opens in a tab. 🎉
+
+> 💡 For a permanent install, use [web-ext](https://github.com/mozilla/web-ext)
+> (`web-ext build`) or sign the extension on
+> [addons.mozilla.org](https://addons.mozilla.org/).
+
+## 📁 Project structure
+
+    container-proxy-importer/
+    ├── manifest.json          # MV2 manifest (Firefox 153+)
+    ├── background.js          # event page: containers, routing, management, conflict guard
+    ├── import.html/.css/.js   # import/export + container management page
+    ├── icon.svg               # toolbar icon (monochrome, theme-adaptive)
+    ├── icons/icon-template.svg
+    ├── _locales/en, _locales/ru
+    ├── README.md              # this file
+    ├── LICENSE                 # MIT
+    └── .gitignore
+
+## 🧠 How it works
 
 1. 📥 The page parses any FoxyProxy format (JSON or XML).
 2. 🧱 The background script creates one container per proxy
@@ -145,6 +171,6 @@ system theme too. The page content and the fixed control bar are CENTERED with a
    UI or other extensions) are tracked live; the page list and the
    exports always read the current state.
 
-### 📄 License
+## 📄 License
 
 [MIT](./LICENSE) © 2026 Siarhei Kuzeyeu
