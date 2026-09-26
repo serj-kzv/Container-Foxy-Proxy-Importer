@@ -1,7 +1,5 @@
-# .github/workflows/release.yml
 name: Build XPI (release branches)
 
-# Сборка запускается только для веток вида release/x.x.x
 on:
   push:
     branches:
@@ -9,11 +7,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  WEB_EXT_VERSION: '10.6.0'
+  EXTENSION_NAME: 'container-foxyproxy-importer'
+  EXTENSION_DESCRIPTION: 'Import FoxyProxy configurations into Firefox, turn every proxy into a Firefox container, and route each container through its own proxy — automatically.'
 
 jobs:
   build:
-    name: Build & Smoke Test XPI
+    name: Build & Release XPI
     runs-on: ubuntu-latest
 
     steps:
@@ -21,33 +24,39 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
-      # Извлекаем версию из имени ветки: release/1.2.3 -> 1.2.3
       - name: Extract version from branch name
         id: version
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#release/}"
+          VERSION="${BRANCH_NAME#release/}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Branch name '$GITHUB_REF_NAME' does not match release/x.y.z pattern" >&2
+            echo "::error::Branch name '$BRANCH_NAME' does not match release/x.y.z pattern"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Smoke-тест 1: lint манифеста и исходников расширения
       - name: Smoke test — web-ext lint
-        run: npx --yes web-ext@10.6.0 lint --source-dir .
+        run: >-
+          npx --yes "web-ext@${WEB_EXT_VERSION}" lint
+          --source-dir .
+          --ignore-files .github .gitignore .gitattributes README.md LICENSE
+          --no-input
 
-      # Сборка XPI из корня репозитория (manifest.json лежит в корне)
       - name: Build XPI with web-ext
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          npx --yes web-ext@10.6.0 build \
+          npx --yes "web-ext@${WEB_EXT_VERSION}" build \
             --source-dir . \
             --artifacts-dir ./dist \
-            --filename "container-foxyproxy-importer-${{ steps.version.outputs.version }}.xpi" \
+            --filename "${EXTENSION_NAME}-${VERSION}.xpi" \
             --overwrite-dest \
+            --no-input \
             --ignore-files \
               .github \
               .gitignore \
@@ -55,34 +64,49 @@ jobs:
               README.md \
               LICENSE
 
-      # Smoke-тест 2: проверяем, что XPI создан, содержит manifest.json
-      # и версия в манифесте совпадает с версией из имени ветки
       - name: Smoke test — verify XPI contents and version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          XPI="dist/container-foxyproxy-importer-${{ steps.version.outputs.version }}.xpi"
+          XPI="dist/${EXTENSION_NAME}-${VERSION}.xpi"
 
           if [[ ! -f "$XPI" ]]; then
-            echo "XPI file was not created: $XPI" >&2
+            echo "::error::XPI file was not created: $XPI"
             exit 1
           fi
 
           if ! unzip -l "$XPI" | grep -q "manifest.json"; then
-            echo "manifest.json is missing inside the XPI" >&2
+            echo "::error::manifest.json is missing inside the XPI"
             exit 1
           fi
 
-          MANIFEST_VERSION=$(unzip -p "$XPI" manifest.json | jq -r '.version')
-          if [[ "$MANIFEST_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
-            echo "Version mismatch: branch expects ${{ steps.version.outputs.version }}, manifest says $MANIFEST_VERSION" >&2
+          MANIFEST_VERSION="$(unzip -p "$XPI" manifest.json | jq -r '.version')"
+          if [[ "$MANIFEST_VERSION" != "$VERSION" ]]; then
+            echo "::error::Version mismatch: branch expects $VERSION, manifest says $MANIFEST_VERSION"
             exit 1
           fi
 
-          echo "Smoke test passed: $XPI contains manifest.json with version $MANIFEST_VERSION"
+          DEFAULT_LOCALE="$(unzip -p "$XPI" manifest.json | jq -r '.default_locale // empty')"
+          if [[ -z "$DEFAULT_LOCALE" ]]; then
+            echo "::error::manifest.json uses __MSG_ placeholders but has no default_locale"
+            exit 1
+          fi
 
-      - name: Upload XPI artifact
-        uses: actions/upload-artifact@v4
+          if ! unzip -l "$XPI" | grep -q "_locales/${DEFAULT_LOCALE}/messages.json"; then
+            echo "::error::_locales/${DEFAULT_LOCALE}/messages.json is missing inside the XPI"
+            exit 1
+          fi
+
+          echo "Smoke test passed: $XPI, manifest version $MANIFEST_VERSION, locale ${DEFAULT_LOCALE} OK"
+
+      - name: Create GitHub Release with XPI
+        uses: softprops/action-gh-release@v3
         with:
-          name: container-foxyproxy-importer-${{ steps.version.outputs.version }}.xpi
-          path: dist/container-foxyproxy-importer-${{ steps.version.outputs.version }}.xpi
-          if-no-files-found: error
-          retention-days: 90
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Container FoxyProxy Importer v${{ steps.version.outputs.version }}
+          body: ${{ env.EXTENSION_DESCRIPTION }}
+          files: dist/${{ env.EXTENSION_NAME }}-${{ steps.version.outputs.version }}.xpi
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
