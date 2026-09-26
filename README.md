@@ -4,7 +4,7 @@
 > **Firefox container**, and route each container through its own proxy —
 > automatically. Manage every container right on the page.
 
-![Version](https://img.shields.io/badge/version-2.1.6-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Firefox](https://img.shields.io/badge/Firefox-153%2B-orange)
+![Version](https://img.shields.io/badge/version-2.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Firefox](https://img.shields.io/badge/Firefox-153%2B-orange)
 
 ## ✨ Features
 
