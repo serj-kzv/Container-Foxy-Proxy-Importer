@@ -1,9 +1,9 @@
-name: Build XPI (release branches)
+name: Build and Release XPI
 
 on:
   push:
     branches:
-      - 'release/*.*.*'
+      - main
   workflow_dispatch:
 
 permissions:
@@ -28,19 +28,32 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Extract version from branch name
+      - name: Read version from manifest.json
         id: version
-        env:
-          BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${BRANCH_NAME#release/}"
+          VERSION="$(jq -r '.version' manifest.json)"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Branch name '$BRANCH_NAME' does not match release/x.y.z pattern"
+            echo "::error::manifest.json version '$VERSION' does not match x.y.z pattern"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Check if release already exists
+        id: release_exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v${VERSION}" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release v${VERSION} already exists — skipping build."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Release v${VERSION} does not exist — will build."
+          fi
+
       - name: Smoke test — web-ext lint
+        if: steps.release_exists.outputs.skip != 'true'
         run: >-
           npx --yes "web-ext@${WEB_EXT_VERSION}" lint
           --source-dir .
@@ -48,6 +61,7 @@ jobs:
           --no-input
 
       - name: Build XPI with web-ext
+        if: steps.release_exists.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -65,6 +79,7 @@ jobs:
               LICENSE
 
       - name: Smoke test — verify XPI contents and version
+        if: steps.release_exists.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -82,7 +97,7 @@ jobs:
 
           MANIFEST_VERSION="$(unzip -p "$XPI" manifest.json | jq -r '.version')"
           if [[ "$MANIFEST_VERSION" != "$VERSION" ]]; then
-            echo "::error::Version mismatch: branch expects $VERSION, manifest says $MANIFEST_VERSION"
+            echo "::error::Version mismatch: expected $VERSION, got $MANIFEST_VERSION"
             exit 1
           fi
 
@@ -97,9 +112,10 @@ jobs:
             exit 1
           fi
 
-          echo "Smoke test passed: $XPI, manifest version $MANIFEST_VERSION, locale ${DEFAULT_LOCALE} OK"
+          echo "Smoke test passed: $XPI, version $MANIFEST_VERSION, locale ${DEFAULT_LOCALE} OK"
 
       - name: Create GitHub Release with XPI
+        if: steps.release_exists.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.version }}
